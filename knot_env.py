@@ -90,5 +90,5 @@ class KnotEnv(object):
       plt.plot(self.end_state[i][:, 0], self.end_state[i][:, 1], c='g', label='end')
       plt.plot(self.traj[i][:, 0], self.traj[i][:, 1], c='b', label='traj')
       plt.legend()
-      plt.savefig('/home/genli/topology_multiprocessing/baselines/baselines/a2c/fig/%s-%d.png' % (str(datetime.datetime.now()), i))
+      plt.savefig('/home/myyan92/topology_learning/%s-%d.png' % (str(datetime.datetime.now()), i))
       plt.close()
