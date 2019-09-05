@@ -60,23 +60,23 @@ def learn(
 
     # Instantiate the model object (that creates step_model and train_model)
     keys = ['move-R1_left-1_sign-1',
-            'move-R1_left-1_sign--1',
-            'move-R1_left--1_sign-1',
-            'move-R1_left--1_sign--1',
-            'move-R2_left-1_over_before_under-1',
-            'move-R2_left-1_over_before_under--1',
-            'move-R2_left--1_over_before_under-1',
-            'move-R2_left--1_over_before_under--1'
+#            'move-R1_left-1_sign--1',
+#            'move-R1_left--1_sign-1',
+#            'move-R1_left--1_sign--1',
+#            'move-R2_left-1_over_before_under-1',
+#            'move-R2_left-1_over_before_under--1',
+#            'move-R2_left--1_over_before_under-1',
+#            'move-R2_left--1_over_before_under--1'
            ]
 
     gaussian_init = {'move-R1_left-1_sign-1': np.array([0.9,0.0,0.2,-0.2,-0.2,0.1]),
-                     'move-R1_left-1_sign--1': np.array([0.1,0.0,0.2,0.2,-0.2,0.1]),
-                     'move-R1_left--1_sign-1': np.array([0.1,0.0,-0.2,0.2,0.2,0.1]),
-                     'move-R1_left--1_sign--1': np.array([0.9,0.0,-0.2,-0.2,0.2,0.1]),
-                     'move-R2_left-1_over_before_under-1': np.array([0.3,0.0,0.2,0.2,-0.2,0.1]),
-                     'move-R2_left-1_over_before_under--1': np.array([0.7,0.0,0.2,-0.2,-0.2,0.1]),
-                     'move-R2_left--1_over_before_under-1': np.array([0.3,0.0,-0.2,0.2,0.2,0.1]),
-                     'move-R2_left--1_over_before_under--1': np.array([0.7,0.0,-0.2,-0.2,0.2,0.1])
+#                     'move-R1_left-1_sign--1': np.array([0.1,0.0,0.2,0.2,-0.2,0.1]),
+#                     'move-R1_left--1_sign-1': np.array([0.1,0.0,-0.2,0.2,0.2,0.1]),
+#                     'move-R1_left--1_sign--1': np.array([0.9,0.0,-0.2,-0.2,0.2,0.1]),
+#                     'move-R2_left-1_over_before_under-1': np.array([0.3,0.0,0.2,0.2,-0.2,0.1]),
+#                     'move-R2_left-1_over_before_under--1': np.array([0.7,0.0,0.2,-0.2,-0.2,0.1]),
+#                     'move-R2_left--1_over_before_under-1': np.array([0.3,0.0,-0.2,0.2,0.2,0.1]),
+#                     'move-R2_left--1_over_before_under--1': np.array([0.7,0.0,-0.2,-0.2,0.2,0.1])
                      }
     models = [Model(key) for key in keys]
     for model in models:
@@ -86,12 +86,12 @@ def learn(
     #    model.load(load_path)
 
     buffers = [Buffer(reward_key=key, size=50000) for key in keys]
-#    for buffer in buffers:
-#        buffer.load(buffer.reward_key+'_buffer.npz')
+    for buffer in buffers:
+        buffer.load(buffer.reward_key+'_buffer.npz')
 
     model_stats = [ModelStats(model_name=key) for key in keys]
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=4, replay_grow=1)
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=4, replay_grow=0.3)
 
     for _ in range(total_timesteps):
         a2c.update()
