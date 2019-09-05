@@ -48,6 +48,18 @@ class Buffer(object):
             out[i] = x[idx[i]]
         return out
 
+    def augment(self, obs, actions):
+        rotations = np.random.uniform(0,np.pi*2, size=(obs.shape[0],))
+        translations = np.random.uniform(-0.1,0.1,size=(obs.shape[0],1,2))
+        rotations = np.array([[np.cos(rotations), np.sin(rotations)],
+                              [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
+        obs = obs.copy()
+        actions = actions.copy()
+        obs[:,:,:2] = np.matmul(obs[:,:,:2], rotations) + translations
+        actions[:,1:3] = np.matmul(actions[:,np.newaxis,1:3], rotations)[:,0,:] + translations[:,0,:]
+        actions[:,3:5] = np.matmul(actions[:,np.newaxis,3:5], rotations)[:,0,:] + translations[:,0,:]
+        return obs, actions
+
     def get(self, batch_size):
         # returns
         # obs [batch, 64, 3]

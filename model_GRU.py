@@ -15,9 +15,9 @@ class Model:
             else:
                 self.input = tf.placeholder(dtype=tf.float32, shape=[None,64,3])
 
-            #cell = tf.nn.rnn_cell.GRUCell(512, activation=tf.nn.relu6, name='gru_cell')
-            #self.biLSTM, self.biLSTM_final_state = tf.nn.bidirectional_dynamic_rnn(cell, cell, self.input,
-            #                                                                       dtype = tf.float32, time_major=False)
+            cell = tf.nn.rnn_cell.GRUCell(512, activation=tf.nn.relu6, name='gru_cell')
+            self.biLSTM, self.biLSTM_final_state = tf.nn.bidirectional_dynamic_rnn(cell, cell, self.input,
+                                                                                   dtype = tf.float32, time_major=False)
 
             # self.biLSTM stores (hidden_fw, hidden_bw)
             # self.feature = tf.concat([self.biLSTM[0], self.biLSTM[1], self.input], axis=2)
@@ -27,17 +27,17 @@ class Model:
             # self.attention_feature = tf.matmul(attention_w, self.feature)
             # self.combined_feature = tf.concat([self.feature, self.attention_feature], axis=2)
 
-            #self.feature = tf.concat([self.biLSTM_final_state[0], self.biLSTM_final_state[1]], axis=-1)
-            #fc1 = self.dense(self.feature, 'fc1', 512, 'relu')
-            #fc2 = self.dense(fc1, 'fc2', 256, 'relu')
+            self.feature = tf.concat([self.biLSTM_final_state[0], self.biLSTM_final_state[1]], axis=-1)
+            fc1 = self.dense(self.feature, 'fc1', 512, 'relu')
+            fc2 = self.dense(fc1, 'fc2', 256, 'relu')
             gaussian_mean_init = tf.constant_initializer(action_init) if action_init is not None else tf.zeros_initializer()
-            input = tf.layers.flatten(self.input)
-            self.gaussian_mean = self.dense(input, 'gaussian_mean', action_dim, activation=None,
+            #input = tf.layers.flatten(self.input)
+            self.gaussian_mean = self.dense(fc2, 'gaussian_mean', action_dim, activation=None,
                                             scale=0.01, bias_init=gaussian_mean_init)
-            self.gaussian_logstd = tf.get_variable('gaussian_logstd', shape=[1,action_dim],
-                                            initializer = tf.constant_initializer([-2.0,-1.5,-1.5,-1.5,-1.5,-2.0]))
+            self.gaussian_logstd = self.dense(fc2, 'gaussian_logstd', action_dim, activation=None,
+                                            scale=0.01, bias_init=tf.constant_initializer([-2.0,-1.5,-1.5,-1.5,-1.5,-2.0]))
             self.gaussian = tfp.distributions.MultivariateNormalDiag(loc=self.gaussian_mean,
-                                                                     scale_diag = tf.exp(self.gaussian_mean*0.0+self.gaussian_logstd)) # Bx6
+                                                                     scale_diag = tf.exp(self.gaussian_logstd))
             self.sample_action = self.gaussian.sample()
 
             self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=1000000)
