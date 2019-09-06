@@ -77,8 +77,10 @@ class KnotEnv(object):
     #                      [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
     #self.start_state[:,:,:2] = np.matmul(self.start_state[:,:,:2], rotations) + translations
     #self.start_state = [st for st in self.start_state]
-    self.start_state = [gen_random_state() for _ in range(self.parallel)]
-    self.start_state = [np.concatenate([st, np.zeros((64,1))], axis=1) for st in self.start_state]
+    start_state = np.loadtxt('start_state_1_intersection.txt')
+    self.start_state = [start_state]*self.parallel
+    #self.start_state = [gen_random_state() for _ in range(self.parallel)]
+    #self.start_state = [np.concatenate([st, np.zeros((64,1))], axis=1) for st in self.start_state]
     return self.start_state
 
 
