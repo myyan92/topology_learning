@@ -7,6 +7,8 @@ def get_reward_key(reward, start_state):
     intersections = find_intersections(start_state)
     num_segs = len(intersections) * 2 + 1
     # using _ and - so that the string is valid tensorflow scope name
+    if reward.get('move') is None:
+        return None
     if reward.get('move')=='R1':
         return "move-R1_left-%d_sign-%d" % (reward['left'], reward['sign'])
     if reward.get('move')=='R2' and reward.get('over_idx') == reward.get('under_idx'):
@@ -87,6 +89,29 @@ class Buffer(object):
 
         return obs, actions, np.ones((batch_size,)), over_seg_dict, under_seg_dict
 
+    def augment(self, obs, actions, over_seg_dict, under_seg_dict):
+        rotations = np.random.uniform(0,np.pi*2, size=(obs.shape[0],))
+        translations = np.random.uniform(-0.1,0.1,size=(obs.shape[0],1,2))
+        rotations = np.array([[np.cos(rotations), np.sin(rotations)],
+                              [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
+        obs = obs.copy()
+        actions = actions.copy()
+        obs[:,:,:2] = np.matmul(obs[:,:,:2], rotations) + translations
+        actions[:,1:3] = np.matmul(actions[:,np.newaxis,1:3], rotations)[:,0,:] + translations[:,0,:]
+        actions[:,3:5] = np.matmul(actions[:,np.newaxis,3:5], rotations)[:,0,:] + translations[:,0,:]
+        over_seg_obs = over_seg_dict['obs'].copy()
+        over_seg_obs[:,:,:2] = np.matmul(over_seg_obs[:,:,:2], rotations) + translations
+        for i,l in enumerate(over_seg_dict['length']):
+            over_seg_obs[i,l:] = 0.0
+        under_seg_obs = under_seg_dict['obs'].copy()
+        under_seg_obs[:,:,:2] = np.matmul(under_seg_obs[:,:,:2], rotations) + translations
+        for i,l in enumerate(under_seg_dict['length']):
+            under_seg_obs[i,l:] = 0.0
+        over_seg_dict = {'obs':over_seg_obs, 'pos':over_seg_dict['pos'], 'length':over_seg_dict['length']}
+        under_seg_dict = {'obs':under_seg_obs, 'pos':under_seg_dict['pos'], 'length':under_seg_dict['length']}
+        return obs, actions, over_seg_dict, under_seg_dict
+
+
     def dump(self):
         np.savez(self.reward_key+'_buffer.npz',actions=self.actions[:self.num_in_buffer],
                                                obs=self.obs[:self.num_in_buffer],
@@ -106,3 +131,18 @@ class Buffer(object):
         self.over_seg_range[:self.num_in_buffer]=data['over_seg_range']
         self.under_seg_range[:self.num_in_buffer]=data['under_seg_range']
         self.next_idx = self.num_in_buffer
+
+    def append(self, np_file):
+        if self.obs is None:
+            self.load(np_file)
+            return
+        data = np.load(np_file)
+        length = data['actions'].shape[0]
+        length = min(length, self.size-self.num_in_buffer)
+        self.obs[self.num_in_buffer:self.num_in_buffer+length]=data['obs'][:length]
+        self.actions[self.num_in_buffer:self.num_in_buffer+length]=data['actions'][:length]
+        self.over_seg_range[self.num_in_buffer:self.num_in_buffer+length]=data['over_seg_range'][:length]
+        self.under_seg_range[self.num_in_buffer:self.num_in_buffer+length]=data['under_seg_range'][:length]
+        self.num_in_buffer += length
+        self.next_idx += length
+
