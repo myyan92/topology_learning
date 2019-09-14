@@ -87,8 +87,8 @@ class Model:
 
             # pick_weight is the distribution of first action dimension.
             pick_weight = tf.nn.softmax(tf.squeeze(fc3_2, -1))
-            pick_weight = pick_weight * tf.cast(self.mask_over, tf.float32)
-            pick_weight = pick_weight / (tf.reduce_sum(pick_weight, axis=-1, keepdims=True) + 1e-8)
+            pick_weight = pick_weight * tf.cast(self.mask_over, tf.float32) + 1e-9 # to prevent NAN gradient
+            pick_weight = pick_weight / tf.reduce_sum(pick_weight, axis=-1, keepdims=True)
             self.pick_weight = pick_weight
 
             fc1 = self.dense(self.feature_under_2, 'under_fc1', 512, 'relu')
