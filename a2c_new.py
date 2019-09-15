@@ -1,5 +1,6 @@
 import time
-import os
+import os, sys
+import signal
 import pdb
 import tensorflow as tf
 import numpy as np
@@ -42,7 +43,8 @@ class A2C():
             while self.buffer_dict[key].has_atleast(self.replay_start+self.replay_grow*self.steps_dict[key]):
                 obs, actions, rewards, over_seg_dict, under_seg_dict = self.buffer_dict[key].get(self.train_batch_size)
                 # add augmentation
-                # obs, actions = self.buffer_dict[key].augment(obs, actions)
+                obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
+                                                                   obs, actions, over_seg_dict, under_seg_dict)
                 self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
                 self.steps_dict[key] += 1
                 print(self.steps_dict[key])
@@ -65,14 +67,56 @@ def learn(
 
     # Instantiate the model object (that creates step_model and train_model)
     keys = ['move-cross_endpoint-over_sign-1',
-#            'move-R1_left-1_sign--1',
-#            'move-R1_left--1_sign-1',
-#            'move-R1_left--1_sign--1',
-#            'move-R2_left-1_over_before_under-1',
-#            'move-R2_left-1_over_before_under--1',
-#            'move-R2_left--1_over_before_under-1',
-#            'move-R2_left--1_over_before_under--1'
+            'move-cross_endpoint-over_sign--1',
+            'move-R1_left-1_sign-1',
+            'move-R1_left-1_sign--1',
+            'move-R1_left--1_sign-1',
+            'move-R1_left--1_sign--1',
+            'move-R2_left-1_over_before_under-1',
+            'move-R2_left-1_over_before_under--1',
+            'move-R2_left--1_over_before_under-1',
+            'move-R2_left--1_over_before_under--1',
+            'move-R2_left-1_diff',
+            'move-R2_left--1_diff',
            ]
+    init_buffer_names = [
+                        ['move-cross_over_idx-0_sign-1_under_idx-1_buffer.npz',
+                         'move-cross_over_idx-0_sign-1_under_idx-2_buffer.npz',
+                         'move-cross_over_idx-2_sign-1_under_idx-0_buffer.npz',
+                         'move-cross_over_idx-2_sign-1_under_idx-1_buffer.npz'],
+                        ['move-cross_over_idx-0_sign--1_under_idx-1_buffer.npz',
+                         'move-cross_over_idx-0_sign--1_under_idx-2_buffer.npz',
+                         'move-cross_over_idx-2_sign--1_under_idx-0_buffer.npz',
+                         'move-cross_over_idx-2_sign--1_under_idx-1_buffer.npz'],
+                        ['idx-1_left-1_move-R1_sign-1_buffer.npz',
+                         'idx-2_left-1_move-R1_sign-1_buffer.npz'],
+                        ['idx-0_left-1_move-R1_sign--1_buffer.npz',
+                         'idx-1_left-1_move-R1_sign--1_buffer.npz'],
+                        ['idx-0_left--1_move-R1_sign-1_buffer.npz',
+                         'idx-1_left--1_move-R1_sign-1_buffer.npz'],
+                        ['idx-1_left--1_move-R1_sign--1_buffer.npz',
+                         'idx-2_left--1_move-R1_sign--1_buffer.npz'],
+                        ['left-1_move-R2_over_before_under-1_over_idx-0_under_idx-0_buffer.npz',
+                         'left-1_move-R2_over_before_under-1_over_idx-1_under_idx-1_buffer.npz'],
+                        ['left-1_move-R2_over_before_under--1_over_idx-1_under_idx-1_buffer.npz',
+                         'left-1_move-R2_over_before_under--1_over_idx-2_under_idx-2_buffer.npz'],
+                        ['left--1_move-R2_over_before_under-1_over_idx-0_under_idx-0_buffer.npz',
+                         'left--1_move-R2_over_before_under-1_over_idx-1_under_idx-1_buffer.npz'],
+                        ['left--1_move-R2_over_before_under--1_over_idx-1_under_idx-1_buffer.npz',
+                         'left--1_move-R2_over_before_under--1_over_idx-2_under_idx-2_buffer.npz'],
+                        ['left-1_move-R2_over_before_under--1_over_idx-1_under_idx-0_buffer.npz',
+                         'left-1_move-R2_over_before_under--1_over_idx-2_under_idx-0_buffer.npz',
+                         'left-1_move-R2_over_before_under--1_over_idx-2_under_idx-1_buffer.npz',
+                         'left-1_move-R2_over_before_under-1_over_idx-0_under_idx-1_buffer.npz',
+                         'left-1_move-R2_over_before_under-1_over_idx-0_under_idx-2_buffer.npz',
+                         'left-1_move-R2_over_before_under-1_over_idx-1_under_idx-2_buffer.npz'],
+                        ['left--1_move-R2_over_before_under--1_over_idx-1_under_idx-0_buffer.npz',
+                         'left--1_move-R2_over_before_under--1_over_idx-2_under_idx-0_buffer.npz',
+                         'left--1_move-R2_over_before_under--1_over_idx-2_under_idx-1_buffer.npz',
+                         'left--1_move-R2_over_before_under-1_over_idx-0_under_idx-1_buffer.npz',
+                         'left--1_move-R2_over_before_under-1_over_idx-0_under_idx-2_buffer.npz',
+                         'left--1_move-R2_over_before_under-1_over_idx-1_under_idx-2_buffer.npz']
+                       ]
 
     models = [Model(key) for key in keys]
     for model in models:
@@ -82,12 +126,20 @@ def learn(
     #    model.load(load_path)
 
     buffers = [Buffer(reward_key=key, size=50000) for key in keys]
-    for buffer in buffers:
-        buffer.load(buffer.reward_key+'_buffer.npz')
+    for buffer, init_bufs in zip(buffers, init_buffer_names):
+        for ib in init_bufs:
+            buffer.append(ib)
 
     model_stats = [ModelStats(model_name=key) for key in keys]
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
     a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=4, replay_grow=3)
+
+    def signal_handler(sig, frame):
+        for buffer in buffers:
+             buffer.dump()
+             print('dump big buffer succeed! Size:', buffer.num_in_buffer)
+        sys.exit(0)
+    signal.signal(signal.SIGINT, signal_handler)
 
     for _ in range(total_timesteps):
         a2c.update()
@@ -95,6 +147,6 @@ def learn(
 
 
 if __name__ == "__main__":
-    env = KnotEnv(parallel=6)
+    env = KnotEnv(parallel=90)
     learn(env)
 
