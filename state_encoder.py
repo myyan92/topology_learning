@@ -47,3 +47,91 @@ def pad_batch(seg_dicts):
     seg_length = np.array(seg_length)
 
     return  {'obs': seg_obs, 'pos': seg_pos, 'length': seg_length}
+
+
+def mirror(ob, action, reward):
+    # flip the y axis
+
+    ob=ob.copy() if ob is not None else None
+    action=action.copy() if action is not None else None
+    reward=reward.copy() if reward is not None else None
+
+    if ob is not None:
+        ob[:,1]=-ob[:,1]
+    if action is not None:
+        action[2]=-action[2]
+        action[4]=-action[4]
+    if reward is not None:
+        if 'left' in reward:
+            reward['left']=-reward['left']
+        if 'sign' in reward:
+            reward['sign']=-reward['sign']
+    return ob, action, reward
+
+def reverse(ob, action, reward):
+    # flip the order of points in the ob
+
+    ob=ob.copy() if ob is not None else None
+    action=action.copy() if action is not None else None
+    reward=reward.copy() if reward is not None else None
+
+    if ob is not None:
+        ob=ob[::-1]
+    if action is not None:
+        action[0]=1-action[0]
+    if reward is not None:
+        assert(ob is not None)
+        if 'left' in reward:
+            reward['left']=-reward['left']
+        if 'over_before_under' in reward:
+            reward['over_before_under']=-reward['over_before_under']
+        intersections = find_intersections(ob)
+        num_segs = len(intersections) * 2 + 1
+        for key in ['idx' ,'over_idx', 'under_idx']:
+            if key in reward:
+                reward[key] = num_segs - reward[key] - 1
+    return ob, action, reward
+
+
+def unifying_transform_encode(ob, action, reward):
+    # use mirror and/or reverse so that reward['left']=1, reward['sign']=1,
+    # reward['over_before_under']=1
+    # return the list of used transforms for decoding.
+
+    """ Usage:
+        ob = env.reset()
+        intended_action = planner.get_intended_action(ob)
+        ob_u, _, intended_action_u, transform = unifying_transform_encode(ob, action=None, intended_action)
+        model = model_dict[get_reward_key(intended_action_u)]
+        action_u = model.predict(ob_u)
+        action = unifying_transform_decode(ob=None, action=action_u, reward=None, transform=transform)
+        ob_next, reward, _, _ = env.step(action)
+        ob_u, action_u, reward_u, _ = unifying_transform_encode(ob, action, reward)
+        # push to buffer
+    """
+
+    if reward.get('move') is None:
+        return ob, action, reward, []
+    transform = []
+    if reward.get('move') in ['cross', 'R1'] and reward['sign']==-1:
+        ob, action, reward = mirror(ob, action, reward)
+        transform.append('mirror')
+    if reward.get('move') == 'R1' and reward['left']==-1:
+        ob, action, reward = reverse(ob, action, reward)
+        transform.append('reverse')
+    if reward.get('move') == 'R2' and reward['over_before_under']==-1:
+        ob, action, reward = reverse(ob, action, reward)
+        transform.append('reverse')
+    if reward.get('move') == 'R2' and reward['left']==-1:
+        ob, action, reward = mirror(ob, action, reward)
+        transform.append('mirror')
+    return ob, action, reward, transform
+
+def unifying_transform_decode(ob, action, reward, transform):
+
+    if 'mirror' in transform:
+        ob, action, reward = mirror(ob, action, reward)
+    if 'reverse' in transform:
+        ob, action, reward = reverse(ob, action, reward)
+    return ob, action, reward
+

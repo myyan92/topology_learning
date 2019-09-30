@@ -35,5 +35,6 @@ class Runner(object):
             stats = self.model_stats_dict[model.scope]
             stat_reward = 1.0 if reward_key == model.scope else 0.0
             stats.put(stat_reward)
+#        self.env.render() # tmp, for eval
         self.obs = self.env.reset()
         # TODO how to coordinate multiple policies?

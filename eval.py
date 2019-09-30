@@ -5,9 +5,11 @@ import tensorflow as tf
 import numpy as np
 
 from knot_env import KnotEnv
-from runner import Runner
-from buffer import Buffer
-from model_GRU import Model
+from tmp_unifying_runner import Runner
+#from buffer import Buffer
+#from model_GRU import Model
+from advanced_buffer import Buffer
+from model_GRU_attention import Model
 from model_stats import ModelStats
 
 class A2C():
@@ -49,11 +51,12 @@ class A2C():
 def eval(
     env,
     topology_key,
-    eval_size=100,
+    eval_size=90,
     load_path=None):
 
     model = Model(topology_key)
-    model.build(action_init=None)
+    #model.build(action_init=None)
+    model.build()
 
     tf_config = tf.ConfigProto(
         inter_op_parallelism_threads=16,
@@ -67,6 +70,11 @@ def eval(
     # hack reduce gaussian std
     #gaussian_logstd = sess.run(model.gaussian_logstd)
     #sess.run(tf.assign(model.gaussian_logstd, gaussian_logstd-1.0))
+    #vars = model.get_trainable_variables()
+    #vars = [v for v in vars if 'gaussian_logstd' in v.name]
+    #vars = [v for v in vars if 'bias' in v.name]
+    #val = sess.run(vars[0])
+    #sess.run(tf.assign(vars[0], val-2.0))
 
     model_stat = ModelStats(model_name=topology_key,size=eval_size)
     runner = Runner(env, [model], [model_stat], [], gamma=0.99)
@@ -78,6 +86,6 @@ def eval(
 
 
 if __name__ == "__main__":
-    env = KnotEnv(parallel=60)
-    eval(env, 'move-R1_left-1_sign-1', load_path='./test/models/model-move-R1_left-1_sign-1-1972')
-
+    env = KnotEnv(parallel=90)
+    eval(env, 'move-cross_endpoint-over_sign-1', load_path='./1to2-move-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-9710')
+#    eval(env, 'move-R1_left-1_sign-1', load_path='./0to1-R1-left1-sign1-augstart/models/model-move-R1_left-1_sign-1-1860')

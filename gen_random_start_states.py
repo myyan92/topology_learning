@@ -1,5 +1,7 @@
 # generate smooth states with trival topological state
 import numpy as np
+import random
+import glob
 #import matplotlib
 #matplotlib.use('agg')
 #import matplotlib.pyplot as plt
@@ -34,6 +36,13 @@ def gen_random_state():
   scaling = np.random.normal(1.0,0.1)
   matrix = np.array([[np.cos(rotation), np.sin(rotation)],[-np.sin(rotation), np.cos(rotation)]])
   state = np.dot(state, matrix) * scaling + translation
+  return state
+
+
+def gen_random_state_1loop():
+  files = glob.glob('1loop_states/*.txt')
+  file = random.choice(files)
+  state = np.loadtxt(file)
   return state
 
 if __name__ == "__main__":

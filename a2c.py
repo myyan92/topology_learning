@@ -30,7 +30,7 @@ class A2C():
             intra_op_parallelism_threads=16)
         tf_config.gpu_options.allow_growth=True
         self.sess = tf.Session(config=tf_config)
-        self.save_dir = 'test'
+        self.save_dir = '0to1-R2left1obu1-augstate'
         if not os.path.exists(os.path.join(self.save_dir, 'models/')):
             os.makedirs(os.path.join(self.save_dir, 'models/'))
         self.train_writer = tf.summary.FileWriter(os.path.join(self.save_dir, 'tfboard'), self.sess.graph)
@@ -63,17 +63,17 @@ def learn(
     load_path=None):
 
     # Instantiate the model object (that creates step_model and train_model)
-    keys = ['move-R1_left-1_sign-1',
+    keys = [#  'move-R1_left-1_sign-1',
 #            'move-R1_left-1_sign--1',
 #            'move-R1_left--1_sign-1',
 #            'move-R1_left--1_sign--1',
-#            'move-R2_left-1_over_before_under-1',
+            'move-R2_left-1_over_before_under-1',
 #            'move-R2_left-1_over_before_under--1',
 #            'move-R2_left--1_over_before_under-1',
 #            'move-R2_left--1_over_before_under--1'
            ]
 
-    gaussian_init = {'move-R1_left-1_sign-1': np.array([0.9,0.0,0.0,0.0,0.0,0.1]),  # for all trivial state
+    gaussian_init = { 'move-R2_left-1_over_before_under-1': np.array([0.3,0.0,0.0,0.0,0.0,0.1]),  # for all trivial state
 #                     'move-R1_left-1_sign-1': np.array([0.9,0.0,0.2,-0.2,-0.2,0.1]), # for fixed straight state
 #                     'move-R1_left-1_sign--1': np.array([0.1,0.0,0.2,0.2,-0.2,0.1]),
 #                     'move-R1_left--1_sign-1': np.array([0.1,0.0,-0.2,0.2,0.2,0.1]),
