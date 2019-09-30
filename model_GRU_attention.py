@@ -124,7 +124,10 @@ class Model:
             self.ML_action_first = tf.squeeze(self.ML_action_first, axis=1)
             self.ML_action = tf.concat([self.ML_action_first, self.gaussian_mean], axis=-1)
 
-            self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=1000000)
+            # state value
+            self.state_value = self.dense(final_feature, 'state_value', 1, activation=None)
+
+            self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=500)
 
     def conv_layer(self, bottom, name, channels, kernel=3, stride=1, activation=tf.nn.relu):
         with tf.variable_scope(name):
@@ -175,7 +178,7 @@ class Model:
     def get_trainable_variables(self):
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope)
 
-    def setup_optimizer(self, learning_rate, ent_coef, max_grad_norm):
+    def setup_optimizer(self, learning_rate, ent_coef, vf_coef, max_grad_norm):
         with tf.variable_scope(self.scope):
             self.action = tf.placeholder(tf.float32, self.sample_action.shape)
             self.advantage = tf.placeholder(tf.float32, [None])
@@ -191,20 +194,20 @@ class Model:
             # Entropy is used to improve exploration by limiting the premature convergence to suboptimal policy.
             self.entropy = tf.reduce_mean(self.gaussian.entropy()+self.categorical.entropy())
             # Value loss
-            # self.vf_loss = tf.nn.l2_loss(tf.squeeze(self.vf), self.reward) / self.reward.shape[0]
-            self.loss = self.pg_loss - self.entropy*ent_coef # + vf_loss * vf_coef
+            self.vf_loss = tf.reduce_mean((tf.squeeze(self.state_value) - self.reward)**2)
+            self.loss = self.pg_loss - self.entropy*ent_coef + self.vf_loss*vf_coef
 
             params = self.get_trainable_variables()
             grads = tf.gradients(self.loss, params)
             if max_grad_norm is not None:
                 grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
             grads = list(zip(grads, params))
-            optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
             self.optimizer = optimizer.apply_gradients(grads)
 
             tf.summary.scalar('loss', self.loss)
             tf.summary.scalar('pg_loss', self.pg_loss)
-            #tf.summary.scalar('vf_loss', self.vf_loss)
+            tf.summary.scalar('vf_loss', self.vf_loss)
             tf.summary.scalar('entropy', self.entropy)
             self.merged_summary = tf.summary.merge_all()
 
@@ -221,7 +224,6 @@ class Model:
                     self.under_seg_length: under_seg_dict['length']
         }
         _, loss, debug_softmax, debug_mean = sess.run([self.optimizer, self.loss, self.pick_weight, self.gaussian_mean], feed_dict=feed_dict)
-        print(loss)
         if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)):
             pdb.set_trace()
         return loss

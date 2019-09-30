@@ -6,8 +6,8 @@ from povray_render.sample_spline import sample_b_spline, sample_equdistance
 from dynamics_inference.dynamic_models import physbam_3d
 from topology.representation import AbstractState
 from topology.state_2_topology import state2topology
-from topology.BFS import bfs
-from topology_learning.gen_random_start_states import gen_random_state
+from topology.BFS import bfs_all_path
+from topology_learning.gen_random_start_states import gen_random_state, gen_random_state_1loop
 import datetime
 import pdb
 
@@ -55,14 +55,21 @@ class KnotEnv(object):
       if st is None:
         state[i] = np.zeros((64,3))
       else:
-        start_abstract_state, _ = state2topology(self.start_state[i], update_edges=True, update_faces=True)
+        start_abstract_state, start_intersections = state2topology(self.start_state[i], update_edges=True, update_faces=True)
         end_abstract_state, end_intersections = state2topology(st, update_edges=True, update_faces=False)
         intersect_points = [i[0] for i in end_intersections] + [i[1] for i in end_intersections]
         if len(set(intersect_points)) == len(intersect_points):
           # the end state does not have more than 2 segments sharing 1 intersection
-          _, path_action = bfs(start_abstract_state, end_abstract_state, max_depth=1)
-          if len(path_action)==1:
-            reward[i] = path_action[0] # the type of topological action
+          paths = bfs_all_path(start_abstract_state, end_abstract_state, max_depth=1)
+          if len(paths)==1 and len(paths[0][1])==1:  # there is only one possible topological action
+            reward[i] = paths[0][1][0] # the type of topological action
+          if len(paths) > 1:  # there are multiple possibilities
+            start_intersect = [i[0] for i in start_intersections] + [i[1] for i in start_intersections]
+            start_intersect.sort()
+            manipulate_idx = np.searchsorted(start_intersect, traj_param[i,0]*63)
+            for path, path_action in paths:
+                if path_action[0].get('idx') == manipulate_idx or path_action[0].get('over_idx') == manipulate_idx:
+                    reward[i] = path_action[0]
 
     self.end_state = state
     return self.end_state, reward, done, info
@@ -71,8 +78,10 @@ class KnotEnv(object):
   def reset(self):
     #self.start_state = np.zeros((self.parallel, 64,3))
     #self.start_state[:,:,0] = np.linspace(-0.5, 0.5, 64)
-    start_state = np.loadtxt('start_state_1_intersection.txt')
-    self.start_state = np.tile(start_state, (self.parallel,1,1))
+    #start_state = np.loadtxt('start_state_1_intersection.txt')
+    #self.start_state = np.tile(start_state, (self.parallel,1,1))
+    self.start_state = [gen_random_state_1loop() for _ in range(self.parallel)]
+    self.start_state = np.array(self.start_state)
     if np.random.rand()>0.5:
         self.start_state[:,:,1]=-self.start_state[:,:,1] # flip
     rotations = np.random.uniform(0,np.pi*2, size=(self.parallel,))
