@@ -12,10 +12,12 @@ from advanced_runner import Runner
 from advanced_buffer import Buffer
 from model_GRU_attention import Model
 from model_stats import ModelStats
+import gin
+
 
 class A2C():
     def __init__(self, models, model_stats, buffers, log_interval,
-                 train_batch_size, replay_start, replay_grow):
+                 train_batch_size, replay_start, replay_grow, save_dir):
         self.model_dict = {model.scope:model for model in models}
         self.model_stat_dict = {model_stat.model_name:model_stat for model_stat in model_stats}
         self.steps_dict = {model.scope:0 for model in models}
@@ -31,7 +33,7 @@ class A2C():
             intra_op_parallelism_threads=16)
         tf_config.gpu_options.allow_growth=True
         self.sess = tf.Session(config=tf_config)
-        self.save_dir = '1to2-move-endpointover-sign1-randstate'
+        self.save_dir = save_dir
         if not os.path.exists(os.path.join(self.save_dir, 'models/')):
             os.makedirs(os.path.join(self.save_dir, 'models/'))
         self.train_writer = tf.summary.FileWriter(os.path.join(self.save_dir, 'tfboard'), self.sess.graph)
@@ -51,46 +53,39 @@ class A2C():
                 if (self.steps_dict[key] % self.log_interval == 0):
                     self.model_dict[key].save(self.sess, os.path.join(self.save_dir, 'models', 'model-%s'%(key)) , step=self.steps_dict[key])
                     stat_string = self.model_stat_dict[key].stat()
-                    #print(stat_string)
+                    print(stat_string)
 
+@gin.configurable
 def learn(
     env,
+    reward_keys,
+    pretrain_buffers,
     total_timesteps=int(80e6),
     train_batch_size=32,
     vf_coef=0.5,
-    ent_coef=0.01,
+    ent_coef=0.001, # was 0.01 before debuging 2to3.
     max_grad_norm=0.5,
     lr=7e-4,
     gamma=0.99,
     log_interval=10,
-    load_path=None):
+    save_dir='./test'):
 
-    # Instantiate the model object (that creates step_model and train_model)
-    keys = [ 'move-cross_endpoint-over_sign-1',
-            # 'move-R1_left-1_sign-1',
-            # 'move-R2_left-1_over_before_under-1',
-            # 'move-R2_left-1_diff'
-           ]
-
-    models = [Model(key) for key in keys]
+    models = [Model(key) for key in reward_keys]
     for model in models:
         model.build()
         model.setup_optimizer(learning_rate=lr, ent_coef=ent_coef, vf_coef=vf_coef, max_grad_norm=max_grad_norm)
-    #if load_path is not None:
-    #    model.load(load_path)
 
-    buffers = [Buffer(reward_key=key, size=50000) for key in keys]
-    for buffer in buffers:
-        #if os.path.exists(buffer.reward_key+'_buffer.npz'):
-        #    buffer.load(buffer.reward_key+'_buffer.npz')
-        #else:
-        buffer.load(buffer.reward_key+'_init_buffer.npz')
+    buffers = [Buffer(reward_key=key, size=50000) for key in reward_keys]
+    for buffer, init_buffer in zip(buffers, pretrain_buffers):
+        buffer.load(init_buffer)
 
-    model_stats = [ModelStats(model_name=key) for key in keys]
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=4, replay_grow=1)
+    model_stats = [ModelStats(model_name=key) for key in reward_keys]
+
+    # pretrain
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=4, replay_grow=1, save_dir=save_dir)
     a2c.update()
 
-    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in keys] # re-init buffers
+    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys] # re-init buffers
     a2c.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
 
@@ -107,6 +102,9 @@ def learn(
 
 
 if __name__ == "__main__":
-    env = KnotEnv(parallel=90)
+
+    gin_config_file = sys.argv[1]
+    gin.parse_config_file(gin_config_file)
+    env = KnotEnv(parallel=64)
     learn(env)
 

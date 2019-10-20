@@ -7,18 +7,23 @@ from dynamics_inference.dynamic_models import physbam_3d
 from topology.representation import AbstractState
 from topology.state_2_topology import state2topology
 from topology.BFS import bfs_all_path
-from topology_learning.gen_random_start_states import gen_random_state, gen_random_state_1loop
+from topology_learning.gen_random_start_states import gen_random_state, load_random_state
+import gin
 import datetime
 import pdb
 
-
+@gin.configurable
 class KnotEnv(object):
 
-  def __init__(self, parallel=4):
+  def __init__(self, parallel=4,
+               gen_state_func=load_random_state, random_flip=True, random_SE2=True):
     self.action_low = np.array([0, -0.5, -0.5, -0.5, -0.5, 0.02])
     self.action_high = np.array([1, 0.5, 0.5, 0.5, 0.5, 0.2])
     self.dynamic_inference = physbam_3d(' -friction 0.13688 -stiffen_linear 0.23208 -stiffen_bending 0.64118 -self_friction 0.46488')
     self.parallel = parallel
+    self.gen_state_func = gen_state_func
+    self.random_flip = random_flip
+    self.random_SE2 = random_SE2
 
   def step(self, traj_param):
     traj_param = np.array(traj_param)
@@ -76,22 +81,17 @@ class KnotEnv(object):
 
 
   def reset(self):
-    #self.start_state = np.zeros((self.parallel, 64,3))
-    #self.start_state[:,:,0] = np.linspace(-0.5, 0.5, 64)
-    #start_state = np.loadtxt('start_state_1_intersection.txt')
-    #self.start_state = np.tile(start_state, (self.parallel,1,1))
-    self.start_state = [gen_random_state_1loop() for _ in range(self.parallel)]
+    self.start_state = [self.gen_state_func() for _ in range(self.parallel)]
     self.start_state = np.array(self.start_state)
-    if np.random.rand()>0.5:
+    if self.random_flip and np.random.rand()>0.5:
         self.start_state[:,:,1]=-self.start_state[:,:,1] # flip
-    rotations = np.random.uniform(0,np.pi*2, size=(self.parallel,))
-    translations = np.random.uniform(-0.1,0.1,size=(self.parallel,1,2))
-    rotations = np.array([[np.cos(rotations), np.sin(rotations)],
-                          [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
-    self.start_state[:,:,:2] = np.matmul(self.start_state[:,:,:2], rotations) + translations
+    if self.random_SE2:
+        rotations = np.random.uniform(0,np.pi*2, size=(self.parallel,))
+        translations = np.random.uniform(-0.1,0.1,size=(self.parallel,1,2))
+        rotations = np.array([[np.cos(rotations), np.sin(rotations)],
+                              [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
+        self.start_state[:,:,:2] = np.matmul(self.start_state[:,:,:2], rotations) + translations
     self.start_state = [st for st in self.start_state]
-    #self.start_state = [gen_random_state() for _ in range(self.parallel)]
-    #self.start_state = [np.concatenate([st, np.zeros((64,1))], axis=1) for st in self.start_state]
     return self.start_state
 
 

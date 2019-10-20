@@ -1,11 +1,12 @@
-# generate smooth states with trival topological state
 import numpy as np
 import random
 import glob
+import gin
 #import matplotlib
 #matplotlib.use('agg')
 #import matplotlib.pyplot as plt
 
+@gin.configurable
 def gen_random_state():
   # using a OU process
   mu=0.1 # correspond to average curvature
@@ -36,11 +37,12 @@ def gen_random_state():
   scaling = np.random.normal(1.0,0.1)
   matrix = np.array([[np.cos(rotation), np.sin(rotation)],[-np.sin(rotation), np.cos(rotation)]])
   state = np.dot(state, matrix) * scaling + translation
+  state = np.concatenate([state, np.zeros((64,1))], axis=-1)
   return state
 
-
-def gen_random_state_1loop():
-  files = glob.glob('1loop_states/*.txt')
+@gin.configurable
+def load_random_state(file_pattern):
+  files = glob.glob(file_pattern)
   file = random.choice(files)
   state = np.loadtxt(file)
   return state
