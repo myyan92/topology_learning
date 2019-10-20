@@ -1,0 +1,43 @@
+[
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":0, "sign":1},
+    "action_gaussian_mean" : [0.45, -0.24, 0.13, -0.28, 0.15, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":0, "sign":1},
+    "action_gaussian_mean" : [0.45, -0.18, 0.01, -0.16, 0.06, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":0, "sign":1},
+    "action_gaussian_mean" : [0.55, -0.04, -0.03, 0.0, -0.06, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":0, "sign":1},
+    "action_gaussian_mean" : [0.46, -0.21, 0.29, -0.18, 0.30, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":4, "sign":-1},
+    "action_gaussian_mean" : [0.50, 0.05, -0.18, 0.05, -0.24, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":4, "sign":-1},
+    "action_gaussian_mean" : [0.55, -0.03, -0.15, 0.0, -0.23, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":4, "sign":-1},
+    "action_gaussian_mean" : [0.57, -0.11, 0.0, -0.14, 0.0, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  },
+  {
+    "intended_action" : {"move":"cross", "over_idx":2, "under_idx":4, "sign":-1},
+    "action_gaussian_mean" : [0.62, -0.13, 0.01, -0.17, 0.04, 0.05],
+    "action_gaussian_std" : [0.03, 0.05, 0.05, 0.05, 0.05, 0.03]
+  }
+]
