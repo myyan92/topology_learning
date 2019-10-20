@@ -19,21 +19,21 @@ class Model:
             self.under_seg_pos = tf.placeholder(dtype=tf.float32, shape=[None,None,1])
             self.under_seg_length = tf.placeholder(dtype=tf.int32, shape=[None,])
 
-            cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.relu6, name='gru_cell_whole')
+            cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.tanh, name='gru_cell_whole')
             # TODO maybe share cell weights?
             self.biLSTM_whole, self.biLSTM_whole_final_state = tf.nn.bidirectional_dynamic_rnn(cell, cell, self.input,
                                                                                    dtype = tf.float32, time_major=False)
             self.feature_whole = tf.concat([self.biLSTM_whole[0], self.biLSTM_whole[1], self.input], axis=2)
             self.mask_whole = tf.fill([tf.shape(self.input)[0], 64], True)
 
-            cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.relu6, name='gru_cell_over')
+            cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.tanh, name='gru_cell_over')
             self.biLSTM_over, self.biLSTM_over_final_state = tf.nn.bidirectional_dynamic_rnn(cell, cell,
                                                                                    self.over_seg_obs, self.over_seg_length,
                                                                                    dtype = tf.float32, time_major=False)
             self.feature_over = tf.concat([self.biLSTM_over[0], self.biLSTM_over[1], self.over_seg_obs], axis=2)
             self.mask_over = tf.sequence_mask(self.over_seg_length)
 
-            cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.relu6, name='gru_cell_under')
+            cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.tanh, name='gru_cell_under')
             self.biLSTM_under, self.biLSTM_under_final_state = tf.nn.bidirectional_dynamic_rnn(cell, cell,
                                                                                    self.under_seg_obs, self.under_seg_length,
                                                                                    dtype = tf.float32, time_major=False)
@@ -65,6 +65,7 @@ class Model:
             over_relative_pos_cos = tf.sin(over_relative_pos*3.1415)
             over_position_encoding = tf.concat([over_absolute_pos, over_absolute_pos_cos,
                                                over_relative_pos, over_relative_pos_cos], axis=-1)
+            over_position_encoding = over_position_encoding * tf.cast(tf.expand_dims(self.mask_over, axis=-1), tf.float32)
             under_absolute_pos = self.under_seg_pos
             under_absolute_pos_cos = tf.sin(under_absolute_pos*3.1415)
             under_relative_pos = ((under_absolute_pos - under_absolute_pos[:,0:1,:]) * 63
@@ -72,45 +73,46 @@ class Model:
             under_relative_pos_cos = tf.sin(under_relative_pos*3.1415)
             under_position_encoding = tf.concat([under_absolute_pos, under_absolute_pos_cos,
                                                 under_relative_pos, under_relative_pos_cos], axis=-1)
+            under_position_encoding = under_position_encoding * tf.cast(tf.expand_dims(self.mask_under, axis=-1), tf.float32)
 
             # TODO normalization?
-            fc1 = self.dense(self.feature_over_2, 'over_fc1', 512, 'relu')
-            fc2 = self.dense(fc1, 'over_fc2', 256, 'relu')
+            fc1 = tf.layers.dense(self.feature_over_2, 512, name='over_fc1', activation=tf.nn.relu, use_bias=False)
+            fc2 = tf.layers.dense(fc1, 256, name='over_fc2', activation=None, use_bias=False)
             fc2 = fc2 + tf.layers.dense(over_position_encoding, 256, name='over_position_fc', activation=None, use_bias=False)
-            fc3 = self.dense(fc2, 'over_fc3', 1, activation=None)
-            fc3_2 = self.dense(fc2, 'over_fc3_pick', 1, activation=None)
+            fc2 = tf.nn.relu(fc2)
+            fc3 = tf.layers.dense(fc2, 1, name='over_fc3', activation=None, use_bias=False)
+            fc3_2 = tf.layers.dense(fc2, 1, name='over_fc3_pick', activation=None, use_bias=False)
+            fc3, fc3_2 = tf.maximum(fc3, -200), tf.maximum(fc3_2, -200)
             # pad-masked softmax
-            over_summary_weight = tf.nn.softmax(tf.squeeze(fc3, -1))
-            over_summary_weight = over_summary_weight * tf.cast(self.mask_over, tf.float32)
-            over_summary_weight = over_summary_weight / (tf.reduce_sum(over_summary_weight, axis=-1, keepdims=True) + 1e-8)
+            fc3 = tf.where_v2(self.mask_over, tf.squeeze(fc3, -1), -1000.0)
+            over_summary_weight = tf.nn.softmax(fc3)
             over_summary_feature = tf.reduce_sum(tf.expand_dims(over_summary_weight,-1) * self.feature_over_2, axis=1)
 
-            # pick_weight is the distribution of first action dimension.
-            pick_weight = tf.nn.softmax(tf.squeeze(fc3_2, -1))
-            pick_weight = pick_weight * tf.cast(self.mask_over, tf.float32) + 1e-9 # to prevent NAN gradient
-            pick_weight = pick_weight / tf.reduce_sum(pick_weight, axis=-1, keepdims=True)
-            self.pick_weight = pick_weight
+            # pick_logits is the distribution of first action dimension.
+            fc3_2 = tf.where_v2(self.mask_over, tf.squeeze(fc3_2, -1), -1000.0)
+            self.pick_logits = fc3_2
 
-            fc1 = self.dense(self.feature_under_2, 'under_fc1', 512, 'relu')
-            fc2 = self.dense(fc1, 'under_fc2', 256, 'relu')
+            fc1 = tf.layers.dense(self.feature_under_2, 512, name='under_fc1', activation=tf.nn.relu, use_bias=False)
+            fc2 = tf.layers.dense(fc1, 256, name='under_fc2', activation=None, use_bias=False)
             fc2 = fc2 + tf.layers.dense(under_position_encoding, 256, name='under_position_fc', activation=None, use_bias=False)
-            fc3 = self.dense(fc2, 'under_fc3', 1, activation=None)
+            fc2 = tf.nn.relu(fc2)
+            fc3 = tf.layers.dense(fc2, 1, name='under_fc3', activation=None, use_bias=False)
+            fc3 = tf.maximum(fc3, -200)
             # pad-masked softmax
-            under_summary_weight = tf.nn.softmax(tf.squeeze(fc3, -1))
-            under_summary_weight = under_summary_weight * tf.cast(self.mask_under, tf.float32)
-            under_summary_weight = under_summary_weight / (tf.reduce_sum(under_summary_weight, axis=-1, keepdims=True) + 1e-8)
+            fc3 = tf.where_v2(self.mask_under, tf.squeeze(fc3, -1), -1000.0)
+            under_summary_weight = tf.nn.softmax(fc3)
             under_summary_feature = tf.reduce_sum(tf.expand_dims(under_summary_weight,-1) * self.feature_under_2, axis=1)
 
             final_feature = tf.concat([over_summary_feature, under_summary_feature], axis=-1)
             gaussian_mean_init = tf.constant_initializer([0.0,0.0,0.0,0.0,0.1])
             self.gaussian_mean = self.dense(final_feature, 'gaussian_mean', action_dim-1, activation=None,
                                             scale=0.01, bias_init=gaussian_mean_init)
-            self.gaussian_logstd = self.dense(final_feature, 'gaussian_logstd', action_dim-1, activation=None,
+            self.gaussian_std = self.dense(final_feature, 'gaussian_std', action_dim-1, activation=tf.nn.softplus,
                                             scale=0.01, bias_init=tf.constant_initializer([-1.5,-1.5,-1.5,-1.5,-2.0]))
             self.gaussian = tfp.distributions.MultivariateNormalDiag(loc=self.gaussian_mean,
-                                                                     scale_diag = tf.exp(self.gaussian_logstd))
+                                                                     scale_diag = self.gaussian_std+0.001)
 
-            self.categorical = tfp.distributions.Categorical(probs=self.pick_weight) # have to use prob instead of logits
+            self.categorical = tfp.distributions.Categorical(logits=self.pick_logits) # have to use prob instead of logits
             sample_node = self.categorical.sample()
             sample_node = tf.expand_dims(sample_node, -1) # to use gather
             self.sample_action_first = tf.gather(self.over_seg_pos, sample_node, batch_dims=1, axis=1)
@@ -118,7 +120,7 @@ class Model:
             self.sample_action_second = self.gaussian.sample()
             self.sample_action = tf.concat([self.sample_action_first, self.sample_action_second], axis=-1)
 
-            ML_node = tf.argmax(self.pick_weight, axis=-1) # maximum likelyhood
+            ML_node = tf.argmax(self.pick_logits, axis=-1) # maximum likelyhood
             ML_node = tf.expand_dims(ML_node, -1)
             self.ML_action_first = tf.gather(self.over_seg_pos, ML_node, batch_dims=1, axis=1)
             self.ML_action_first = tf.squeeze(self.ML_action_first, axis=1)
@@ -173,6 +175,28 @@ class Model:
             pred, = sess.run([self.ML_action], feed_dict=feed_dict)
         return pred
 
+    def predict_single_vf(self, sess, obs, over_seg_dict, under_seg_dict):
+        feed_dict = {self.input: obs[None],
+                     self.over_seg_obs: over_seg_dict['obs'][None],
+                     self.over_seg_pos: over_seg_dict['pos'][None],
+                     self.over_seg_length: over_seg_dict['length'][None],
+                     self.under_seg_obs: under_seg_dict['obs'][None],
+                     self.under_seg_pos: under_seg_dict['pos'][None],
+                     self.under_seg_length: under_seg_dict['length'][None]}
+        pred, = sess.run([self.state_value], feed_dict=feed_dict)
+        return pred[0]
+
+    def predict_batch_vf(self, sess, obs, over_seg_dict, under_seg_dict):
+        feed_dict = {self.input: obs,
+                     self.over_seg_obs: over_seg_dict['obs'],
+                     self.over_seg_pos: over_seg_dict['pos'],
+                     self.over_seg_length: over_seg_dict['length'],
+                     self.under_seg_obs: under_seg_dict['obs'],
+                     self.under_seg_pos: under_seg_dict['pos'],
+                     self.under_seg_length: under_seg_dict['length']}
+        pred, = sess.run([self.state_value], feed_dict=feed_dict)
+        return pred
+
     def get_variables(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)
     def get_trainable_variables(self):
@@ -223,9 +247,15 @@ class Model:
                     self.under_seg_pos: under_seg_dict['pos'],
                     self.under_seg_length: under_seg_dict['length']
         }
-        _, loss, debug_softmax, debug_mean = sess.run([self.optimizer, self.loss, self.pick_weight, self.gaussian_mean], feed_dict=feed_dict)
-        if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)):
+        loss, debug_softmax, debug_mean = sess.run([self.loss, self.pick_logits, self.gaussian_mean], feed_dict=feed_dict)
+        valid_logits = debug_softmax.flatten()
+        valid_logits = valid_logits[valid_logits>-300]
+        print(np.mean(valid_logits))
+        if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)) or np.isnan(loss):
+            print("loss is nan")
             pdb.set_trace()
+        else:
+           sess.run(self.optimizer, feed_dict=feed_dict)
         return loss
 
     def save(self, sess, file_dir, step):

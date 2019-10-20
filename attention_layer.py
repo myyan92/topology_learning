@@ -57,16 +57,14 @@ def attention(x, y, mask_x, mask_y, hidden_size, num_heads, attention_dropout, t
 
     # Calculate dot product attention
     logits = tf.matmul(q, k, transpose_b=True)
-    weights = tf.nn.softmax(logits, name="attention_weights")
     # mask weights where padded
     mask_x = tf.expand_dims(mask_x, -1)
-    mask_y = tf.expand_dims(mask_y, -1)
-    mask_x, mask_y = tf.cast(mask_x, tf.float32), tf.cast(mask_y, tf.float32)
-    mask = tf.matmul(mask_x, mask_y, transpose_b=True)
-    mask = tf.expand_dims(mask, 1) # for num_heads
-    weights = weights * mask
-    weights = weights / (tf.reduce_sum(weights, axis=-1, keepdims=True) + 1e-8)
-
+    mask_y = tf.expand_dims(mask_y, -2)
+    mask_x = tf.expand_dims(mask_x, 1)
+    mask_y = tf.expand_dims(mask_y, 1)
+    logits = tf.where_v2(mask_y, logits, -1000.0)
+    weights = tf.nn.softmax(logits, name="attention_weights")
+    weights = weights * tf.cast(mask_x, tf.float32)
     if attention_dropout > 0:
       weights = tf.layers.dropout(weights, attention_dropout, training=train)
     attention_output = tf.matmul(weights, v)
