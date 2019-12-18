@@ -12,6 +12,8 @@ from advanced_runner_multistage import Runner
 from advanced_buffer import Buffer
 from model_GRU_attention import Model
 from model_stats import ModelStats
+from topology.representation import AbstractState
+from planner import goal_planner
 import gin
 
 
@@ -57,9 +59,8 @@ class A2C():
 
 @gin.configurable
 def learn(
-    env,
     reward_keys,
-    pretrain_buffers,
+    pretrained_snapshots,
     total_timesteps=int(80e6),
     train_batch_size=32,
     vf_coef=0.5,
@@ -74,19 +75,20 @@ def learn(
     for model in models:
         model.build()
         model.setup_optimizer(learning_rate=lr, ent_coef=ent_coef, vf_coef=vf_coef, max_grad_norm=max_grad_norm)
-        #TODO LOAD SNAPSHOTS
 
     buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys]
     model_stats = [ModelStats(model_name=key) for key in reward_keys]
 
     a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=1, save_dir=save_dir)
+    for model, snapshot in zip(models, pretrained_snapshots):
+        model.load(a2c.sess, snapshot)
 
     #TODO imports
     goal = AbstractState()
     goal.Reide1(idx=0, left=1, sign=1)
     goal.cross(over_idx=0, under_idx=1,sign=1)
     goal.cross(over_idx=2, under_idx=0, sign=1)
-    planner = planner.goal_planner(goal)
+    planner = goal_planner(goal)
     env = KnotEnv(parallel=64, max_step=5, planner_not_feasible_func=planner.not_feasible, planner_reached_goal_func=planner.reached_goal)
     runner = Runner(env, models, model_stats, buffers, topo_action_func=planner.get_action, gamma=gamma)
 
