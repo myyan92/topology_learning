@@ -3,12 +3,12 @@ import numpy as np
 import heapq
 from heaptree import Tree
 import pdb
-from povray_render.sample_spline import sample_b_spline
+from povray_render.sample_spline import sample_b_spline, sample_equdistance
 from dynamics_inference.dynamic_models import physbam_3d
-from state_2_topology import state2topology
+from topology.state_2_topology import state2topology
 
 class RRT(object):
-    def __init__(self, x_init, topology_path, action_sampling_funcs, max_samples):
+    def __init__(self, x_init, topology_path, action_sampling_funcs, max_samples, parallel_sim):
         """
         Template RRT planner
         :param x_init: tuple, initial location
@@ -19,6 +19,7 @@ class RRT(object):
         """
         self.samples_taken = 0
         self.max_samples = max_samples
+        self.parallel = parallel_sim
         self.x_init = x_init
         self.topology_path = topology_path
         self.action_sampling_funcs = action_sampling_funcs
@@ -39,6 +40,8 @@ class RRT(object):
         parent_index = self.topology_path.index(parent_topology)
         action_sampler = self.action_sampling_funcs[parent_index]
         traj_param = action_sampler(parent)
+        traj_param = np.clip(traj_param, np.array([0.0, -0.5, -0.5, -0.5, -0.5, 0.02]),
+                                         np.array([1.0, 0.5, 0.5, 0.5, 0.5, 0.2]))
         action_node = int(traj_param[0]*63)
         action_traj = traj_param[1:-1]
         height = traj_param[-1]
@@ -51,8 +54,7 @@ class RRT(object):
         traj = np.concatenate([traj, traj_height[:,np.newaxis]], axis=-1)
         moves = traj[1:]-traj[:-1]
         actions = [(action_node, m) for m in moves]
-        child = self.mental_dynamics.execute(parent, actions, return_3d=True, return_traj=False)
-        return child, actions
+        return actions
 
     def score_priority(self, parent_priority, parent, child):
         parent_topology, intersections = state2topology(parent, update_edges=True, update_faces=False)
@@ -64,6 +66,7 @@ class RRT(object):
             return None
         if child_index < parent_index:
             return None
+        print("Achieving ", child_index)
         child_priority = parent_priority * 2 / (2**(child_index-parent_index))
         return child_priority
 
@@ -83,49 +86,34 @@ class RRT(object):
         self.trees[0].add_root((1.0, 0, self.x_init))
 
         while self.samples_taken < self.max_samples:
-            parent = self.select_node(self.trees[0])
-            child, traj = self.sample_branch(parent[2])
-            priority = self.score_priority(parent[0], parent[2], child)
-            if priority is not None:
-                self.samples_taken += 1
-                self.trees[0].add_leaf(parent, (priority, self.samples_taken, child), traj)
-                if self.is_solution(child):
-                    waypoints, actions = self.trees[0].reconstruct_path(child)
-                    waypoints = [np.array(w).reshape((64,3)) for w in waypoints]
-                    return waypoints, actions
+            # expand in parallel
+            parents = [self.select_node(self.trees[0]) for _ in range(self.parallel)]
+            trajs = [self.sample_branch(parent[2]) for parent in parents]
+            parent_states = [parent[2] for parent in parents]
+            childs = self.mental_dynamics.execute_batch(parent_states, trajs, return_3d=True)
+            priorities = [self.score_priority(parent[0], parent[2], child) for parent, child in zip(parents, childs)]
+            for priority, parent, child, traj in zip(priorities, parents, childs, trajs):
+                if priority is not None:
+                    self.samples_taken += 1
+                    self.trees[0].add_leaf(parent, (priority, self.samples_taken, child), traj)
+                    if self.is_solution(child):
+                        waypoints, actions = self.trees[0].reconstruct_path(child)
+                        waypoints = [np.array(w).reshape((64,3)) for w in waypoints]
+                        return waypoints, actions
         print("Cannot find solution!")
         return None
 
 
-import tensorflow as tf
 import sys, pickle
 from copy import deepcopy
-from planner import encode
+import tensorflow as tf
 from model_GRU_attention import Model
 from topology.representation import AbstractState
 from topology.BFS import bfs
-
-def random_uniform_sampler():
-    def sampling_func(obs):
-        return np.random.uniform(low=[0.0,-0.5,-0.5,-0.5,-0.5,0.02],
-                                 high=[1.0, 0.5, 0.5, 0.5, 0.5, 0.2])
-    return sampling_func
-
-def random_gaussian_heuristic_sampler(gaussian_mean, gaussian_std):
-    def sampling_func(obs):
-        return np.random.normal(loc=gaussian_mean, scale=gaussian_std)
-    return sampling_func
-
-def model_sampler(sess, model, intended_action):
-    # TODO use unifying encoder and decoder
-    def sampling_func(obs):
-        obs, over_seg_dict, under_seg_dict = encode(obs, intended_action)
-        action = model.predict_single(sess, obs, over_seg_dict, under_seg_dict, explore=True)
-        return action
-    return sampling_func
+from action_sampler import *
 
 
-if __name__=="__main__"
+if __name__ == "__main__":
     sampling_mode = sys.argv[1]
 
     init_state= np.zeros((64,3))
@@ -138,11 +126,11 @@ if __name__=="__main__"
     init_topology.cross(0,1, sign=1)
     topology_path.append(deepcopy(init_topology))
 
-    if sampline_mode == 'random':
+    if sampling_mode == 'random':
         action_sampling_funcs = [random_uniform_sampler(), random_uniform_sampler()]
     elif sampling_mode == 'heuristic':
-        action_sampling_funcs = [random_gaussian_heuristic_sampler([], []), # TODO fill this
-                                 random_gaussian_heuristic_sampler([], [])]  # TODO fill this
+        action_sampling_funcs = [random_gaussian_heuristic_sampler([0.9, 0.0, 0.2, -0.2, -0.2, 0.1], [0.05, 0.05, 0.05, 0.05, 0.05, 0.05]),
+                                 random_gaussian_heuristic_sampler([0.05, -0.2, 0.0, -0.05, -0.1, 0.05], [0.05, 0.05, 0.05, 0.05, 0.05, 0.03])]
     elif sampling_mode == 'model':
         tf_config = tf.ConfigProto(
             inter_op_parallelism_threads=16,
@@ -152,16 +140,18 @@ if __name__=="__main__"
         intended_action = {'move':'R1', 'idx':0, 'left':1, 'sign':1}
         model = Model('move-R1_left-1_sign-1')
         model.build()
-        model.load() # TODO fill this
+        model.load(sess, '0to1-moves-randstate/models/model-move-R1_left-1_sign-1-3400')
         action_sampling_funcs = [model_sampler(sess, model, intended_action)]
 
         intended_action = {'move':'cross', 'over_idx':0, 'under_idx':1, 'sign':1}
-        model = Model('move-cross_endpoint-over_sign-1')
-        model.build()
-        model.load() # TODO fill this
+#        model = Model('move-cross_endpoint-over_sign-1')
+#        model.build()
+#        model.load(sess, '1to2-cross-endpointover-randstate/models/model-move-cross_endpoint-over_sign-1-5000')
         action_sampling_funcs.append(model_sampler(sess, model, intended_action))
 
-    rrt_search = RRT(init_state, topology_path, max_samples = 2000, action_sampling_funcs = action_sampling_funcs)
+    rrt_search = RRT(init_state, topology_path, max_samples = 2000,
+                     action_sampling_funcs = action_sampling_funcs,
+                     parallel_sim=4)
     trajectory = rrt_search.rrt_search()
     if trajectory is not None:
         print('found a solution after %d samples.' % (rrt_search.samples_taken))

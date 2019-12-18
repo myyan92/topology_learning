@@ -1,6 +1,7 @@
 import numpy as np
 from planner import encode
 from model_GRU_attention import Model
+from state_encoder import unifying_transform_encode, unifying_transform_decode
 
 def random_uniform_sampler():
     def sampling_func(obs):
@@ -14,9 +15,10 @@ def random_gaussian_heuristic_sampler(gaussian_mean, gaussian_std):
     return sampling_func
 
 def model_sampler(sess, model, intended_action):
-    # TODO use unifying encoder and decoder
     def sampling_func(obs):
-        obs, over_seg_dict, under_seg_dict = encode(obs, intended_action)
-        action = model.predict_single(sess, obs, over_seg_dict, under_seg_dict, explore=True)
+        obs_u, _, ia_u, transform = unifying_transform_encode(obs, None, intended_action)
+        obs_u, over_seg_dict_u, under_seg_dict_u = encode([obs_u], [ia_u])
+        action_u = model.predict_batch(sess, obs_u, over_seg_dict_u, under_seg_dict_u, explore=True)
+        _, action, _ = unifying_transform_decode(None, action_u[0], None, transform)
         return action
     return sampling_func
