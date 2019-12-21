@@ -30,7 +30,7 @@ class Runner(object):
         self.model_dict = {model.scope:model for model in models}
         self.model_stats_dict = {model_stat.model_name:model_stat for model_stat in model_stats}
         self.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
-        self.obs = env.reset()
+        self.obs = env.hard_reset()
         self.topo_action_func = topo_action_func
         self.explore = explore
         self.eval_save = eval_save

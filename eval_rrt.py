@@ -67,6 +67,7 @@ class RRT(object):
         if child_index < parent_index:
             return None
         print("Achieving ", child_index)
+        np.savetxt('%d.txt'%(self.samples_taken), child)
         child_priority = parent_priority * 2 / (2**(child_index-parent_index))
         return child_priority
 

@@ -1,7 +1,7 @@
 import random
 import pdb
 from state_encoder import *
-from topology.representation import AbstractState
+from topology.representation import AbstractState, reverse_action
 from topology.state_2_topology import state2topology
 from topology.BFS import generate_next
 from topology.reverse_BFS import bfs_all_path as reverse_bfs_all_path
@@ -75,7 +75,8 @@ class goal_planner(object):
     def reached_goal(self, state):
         return state==self.goal
 
-    def get_action(self, state):
+    def get_action(self, geo_state, model_keys):
+        state, _ = state2topology(geo_state, True, True)
         if self.is_feasible(state):
             actions = self.planned_actions[self.feasible_states.index(state)]
             return random.choice(actions)

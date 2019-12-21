@@ -6,8 +6,6 @@ KnotEnv.random_flip = True
 KnotEnv.random_SE2 = True
 
 Runner.topo_action_func = @get_random_action
-#Runner.topo_action_func = @get_fixed_action
-#get_fixed_action.action = {'move':'cross', 'over_idx':0, 'under_idx':2, 'sign':1}
 Runner.eval_save = False
 Runner.eval_render = False
 Runner.explore = True
@@ -19,8 +17,8 @@ learn.reward_keys = ['move-cross_endpoint-over_sign-1']
 # 'move-R2_left-1_over_before_under-1',
 # 'move-R2_left-1_diff'
 
-learn.pretrain_buffers = ['move-cross_endpoint-over_sign-1_init_buffer.npz']
-learn.save_dir = './1to2-move-endpointover-sign1-randstate'
+learn.pretrain_buffers = ['1to2_init_buffers/move-cross_endpoint-over_sign-1_init_buffer.npz']
+learn.save_dir = './1to2-cross-endpointover-sign1-randstate'
 
 
 
