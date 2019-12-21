@@ -93,24 +93,24 @@ class Runner(object):
 
         #plan next action
         next_intended_actions = [self.topo_action_func(ob, self.model_dict.keys()) for ob in next_states]
-        trans_obs, trans_intended_actions, transforms = [], [], []
+        next_trans_obs, next_trans_intended_actions, next_transforms = [], [], []
         for obs, ia in zip(next_states, next_intended_actions):
             obs_u, _, ia_u, transform = unifying_transform_encode(obs, None, ia)
-            trans_obs.append(obs_u)
-            trans_intended_actions.append(ia_u)
-            transforms.append(transform)
-        reward_keys = [get_reward_key(ia_u, obs_u) for ia_u, obs_u in zip(trans_intended_actions, trans_obs)]
+            next_trans_obs.append(obs_u)
+            next_trans_intended_actions.append(ia_u)
+            next_transforms.append(transform)
+        next_reward_keys = [get_reward_key(ia_u, obs_u) for ia_u, obs_u in zip(next_trans_intended_actions, next_trans_obs)]
         # group state and fetch model
-        model_keys = set(reward_keys)
+        model_keys = set(next_reward_keys)
         for key in model_keys:
             model = self.model_dict[key]
-            sublist_trans_obs = [ob_u for ob_u, k in zip(trans_obs, reward_keys) if k==key]
-            sublist_trans_ia = [ia_u for ia_u, k in zip(trans_intended_actions, reward_keys) if k==key]
+            sublist_trans_obs = [ob_u for ob_u, k in zip(next_trans_obs, next_reward_keys) if k==key]
+            sublist_trans_ia = [ia_u for ia_u, k in zip(next_trans_intended_actions, next_reward_keys) if k==key]
             model_inputs = encode(sublist_trans_obs, sublist_trans_ia)
             sublist_state_values = model.predict_batch_vf(sess, *model_inputs)
             # fill in
             idx = 0
-            for i,k in enumerate(reward_keys):
+            for i,k in enumerate(next_reward_keys):
                 if k==key:
                     state_values[original_index[i]]=sublist_state_values[idx]
                     idx += 1
