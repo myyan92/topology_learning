@@ -24,7 +24,7 @@ class Runner(object):
     - Make a mini batch of experiences
     """
     def __init__(self, env, models, model_stats, buffers,
-                 topo_action_func=get_random_action, explore=True,
+                 topo_action_func, planner_reached_goal_func, explore=True,
                  eval_save=False, eval_render=False,  gamma=0.99):
         self.env = env
         self.model_dict = {model.scope:model for model in models}
@@ -32,6 +32,7 @@ class Runner(object):
         self.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
         self.obs = env.hard_reset()
         self.topo_action_func = topo_action_func
+        self.planner_reached_goal = planner_reached_goal_func
         self.explore = explore
         self.eval_save = eval_save
         self.eval_render = eval_render
@@ -42,6 +43,7 @@ class Runner(object):
         self.gamma = gamma # TODO for RRT env?
 
     def run(self, sess):
+        pdb.set_trace()
         intended_actions = [self.topo_action_func(ob, self.model_dict.keys()) for ob in self.obs]
         trans_obs, trans_intended_actions, transforms = [], [], []
         for obs, ia in zip(self.obs, intended_actions):
@@ -73,7 +75,7 @@ class Runner(object):
 
         obs, rewards, dones, infos = self.env.step(actions)
 
-        state_values = np.zeros((obs.shape[0],))
+        state_values = np.zeros((len(obs),))
         # filter failed transitions and fill in zeros
         # filter reached_goal and fill in 1.
         # batching to evaluate next state's state value
@@ -85,7 +87,7 @@ class Runner(object):
                 state_values[idx] = 1.0
                 next_state = obs[idx]
                 next_topo, _ = state2topology(next_state, True, True)
-                if not self.planner.reached_goal(next_topo):
+                if not self.planner_reached_goal(next_topo):
                     original_index.append(idx)
                     next_states.append(next_state)
 
