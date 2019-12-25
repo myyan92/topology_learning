@@ -88,9 +88,9 @@ def learn(
     goal.Reide1(idx=0, left=1, sign=1)
     goal.cross(over_idx=0, under_idx=1,sign=1)
     goal.cross(over_idx=2, under_idx=0, sign=1)
-    planner = goal_planner(goal)
+    planner = goal_planner(goal, reward_keys)
     env = KnotEnv(parallel=64, max_step=5, planner_not_feasible_func=planner.not_feasible, planner_reached_goal_func=planner.reached_goal)
-    runner = Runner(env, models, model_stats, buffers, topo_action_func=planner.get_action, gamma=gamma)
+    runner = Runner(env, models, model_stats, buffers, topo_action_func=planner.get_action, planner_reached_goal_func=planner.reached_goal, gamma=gamma)
 
     def signal_handler(sig, frame):
         for buffer in buffers:

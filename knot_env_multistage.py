@@ -24,7 +24,7 @@ class KnotEnv(object):
     self.parallel = parallel
     self.max_step = max_step
     self.planner_not_feasible = planner_not_feasible_func
-    self.planner_reached_goal_func = planner_reached_goal_func
+    self.planner_reached_goal = planner_reached_goal_func
     self.gen_state_func = gen_state_func
     self.random_flip = random_flip
     self.random_SE2 = random_SE2
@@ -70,23 +70,30 @@ class KnotEnv(object):
         intersect_points = [i[0] for i in end_intersections] + [i[1] for i in end_intersections]
         if len(set(intersect_points)) != len(intersect_points):
           done[i] = True # this is a bad topo state to continue
-        else:
-          paths = bfs_all_path(start_abstract_state, end_abstract_state, max_depth=1)
-          if len(paths)==1 and len(paths[0][1])==1:  # there is only one possible topological action
-            reward[i] = paths[0][1][0] # the type of topological action
-          if len(paths) > 1:  # there are multiple possibilities
-            start_intersect = [i[0] for i in start_intersections] + [i[1] for i in start_intersections]
-            start_intersect.sort()
-            manipulate_idx = np.searchsorted(start_intersect, traj_param[i,0]*63)
-            for path, path_action in paths:
-                if path_action[0].get('idx') == manipulate_idx or path_action[0].get('over_idx') == manipulate_idx:
-                    reward[i] = path_action[0]
-          if self.planner_not_feasible(end_abstract_state):
-            done[i] = True
-          if self.planner_reached_goal(end_abstract_state):
-            done[i] = True
-          if self.steps[i] >= self.max_step:
-            done[i] = True
+          continue
+        intersect_points.sort()
+        diff = np.array([0] + intersect_points + [63])
+        diff = diff[1:] - diff[:-1]
+        if np.any(diff < 5):
+          done[i] = True # some segment too short to continue
+          continue
+
+        paths = bfs_all_path(start_abstract_state, end_abstract_state, max_depth=1)
+        if len(paths)==1 and len(paths[0][1])==1:  # there is only one possible topological action
+          reward[i] = paths[0][1][0] # the type of topological action
+        if len(paths) > 1:  # there are multiple possibilities
+          start_intersect = [i[0] for i in start_intersections] + [i[1] for i in start_intersections]
+          start_intersect.sort()
+          manipulate_idx = np.searchsorted(start_intersect, traj_param[i,0]*63)
+          for path, path_action in paths:
+            if path_action[0].get('idx') == manipulate_idx or path_action[0].get('over_idx') == manipulate_idx:
+              reward[i] = path_action[0]
+        if self.planner_not_feasible(end_abstract_state):
+          done[i] = True
+        if self.planner_reached_goal(end_abstract_state):
+          done[i] = True
+        if self.steps[i] >= self.max_step:
+          done[i] = True
 
     self.prev_state = self.state
     self.state = state
@@ -106,9 +113,9 @@ class KnotEnv(object):
             if self.random_SE2:
                 rotation = np.random.uniform(0,np.pi*2)
                 translation = np.random.uniform(-0.1, 0.1, size=(1,2))
-                rotation = np.array([[np.cos(rotations), np.sin(rotations)],
-                                     [-np.sin(rotations), np.cos(rotations)]])
-                self.state[i] = np.dot(self.state[i], rotation) + translation
+                rotation = np.array([[np.cos(rotation), np.sin(rotation)],
+                                     [-np.sin(rotation), np.cos(rotation)]])
+                self.state[i][:,:2] = np.dot(self.state[i][:,:2], rotation) + translation
     return self.state
 
 

@@ -1,11 +1,17 @@
 import numpy as np
 from topology.state_2_topology import find_intersections
+from topology.representation import AbstractState
 from state_encoder import *
 import pdb
 
 def get_reward_key(reward, start_state):
-    intersections = find_intersections(start_state)
-    num_segs = len(intersections) * 2 + 1
+    if isinstance(start_state, np.ndarray):
+        intersections = find_intersections(start_state)
+        num_segs = len(intersections) * 2 + 1
+    elif isinstance(start_state, AbstractState):
+        num_segs = start_state.pts+1
+    else:
+        raise NotImplementedError
     # using _ and - so that the string is valid tensorflow scope name
     if reward.get('move') is None:
         return None

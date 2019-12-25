@@ -43,7 +43,6 @@ class Runner(object):
         self.gamma = gamma # TODO for RRT env?
 
     def run(self, sess):
-        pdb.set_trace()
         intended_actions = [self.topo_action_func(ob, self.model_dict.keys()) for ob in self.obs]
         trans_obs, trans_intended_actions, transforms = [], [], []
         for obs, ia in zip(self.obs, intended_actions):
@@ -74,7 +73,6 @@ class Runner(object):
         actions = np.array(actions)
 
         obs, rewards, dones, infos = self.env.step(actions)
-
         state_values = np.zeros((len(obs),))
         # filter failed transitions and fill in zeros
         # filter reached_goal and fill in 1.
@@ -94,8 +92,8 @@ class Runner(object):
         #plan next action
         next_intended_actions = [self.topo_action_func(ob, self.model_dict.keys()) for ob in next_states]
         next_trans_obs, next_trans_intended_actions, next_transforms = [], [], []
-        for obs, ia in zip(next_states, next_intended_actions):
-            obs_u, _, ia_u, transform = unifying_transform_encode(obs, None, ia)
+        for ob, ia in zip(next_states, next_intended_actions):
+            obs_u, _, ia_u, transform = unifying_transform_encode(ob, None, ia)
             next_trans_obs.append(obs_u)
             next_trans_intended_actions.append(ia_u)
             next_transforms.append(transform)
@@ -112,9 +110,8 @@ class Runner(object):
             idx = 0
             for i,k in enumerate(next_reward_keys):
                 if k==key:
-                    state_values[original_index[i]]=sublist_state_values[idx]
+                    state_values[original_index[i]]+=sublist_state_values[idx]
                     idx += 1
-
         for ob_u, ac_u, ia_u, vf, key in zip(trans_obs, trans_actions, trans_intended_actions, state_values, reward_keys):
             stats = self.model_stats_dict[key]
             reward = 1.0 if vf > 0.0 else 0.0
