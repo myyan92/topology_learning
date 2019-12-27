@@ -10,7 +10,7 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention import Model
+from model_GRU_attention_2 import Model
 from model_stats import ModelStats
 import gin
 
@@ -92,15 +92,20 @@ def learn(
 
     def signal_handler(sig, frame):
         for buffer in buffers:
-             buffer.dump()
+             buffer.dump(path=save_dir)
              print('dump big buffer succeed! Size:', buffer.num_in_buffer)
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
 
-    for _ in range(total_timesteps):
-        runner.run(a2c.sess)
-        a2c.update()
-
+    try:
+        for _ in range(total_timesteps):
+            runner.run(a2c.sess)
+            a2c.update()
+    except:
+        raise
+    finally:
+        for buffer in buffers:
+            buffer.dump(path=save_dir)
 
 if __name__ == "__main__":
 

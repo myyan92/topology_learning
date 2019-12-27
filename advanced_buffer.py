@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from topology.state_2_topology import find_intersections
 from topology.representation import AbstractState
 from state_encoder import *
@@ -27,7 +28,6 @@ def get_reward_key(reward, start_state):
             return "move-cross_endpoint-over_sign-%d" % (reward['sign'])
         else:
             return "move-cross_endpoint-under_sign-%d" % (reward['sign'])
-    pdb.set_trace()
     raise NotImplementedError
 
 class Buffer(object):
@@ -128,12 +128,13 @@ class Buffer(object):
         return obs, actions, over_seg_dict, under_seg_dict
 
 
-    def dump(self):
+    def dump(self, path='./'):
         if not self.filter_success:
             rewards = self.rewards[:self.num_in_buffer]
         else:
             rewards = np.ones((self.num_in_buffer,))
-        np.savez(self.reward_key+'_buffer.npz',actions=self.actions[:self.num_in_buffer],
+        np.savez(os.path.join(path, self.reward_key+'_buffer.npz'),
+                                               actions=self.actions[:self.num_in_buffer],
                                                obs=self.obs[:self.num_in_buffer],
                                                rewards=rewards,
                                                over_seg_range=self.over_seg_range[:self.num_in_buffer],
