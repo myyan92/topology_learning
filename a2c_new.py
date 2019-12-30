@@ -85,9 +85,13 @@ def learn(
     a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=1, save_dir=save_dir)
     a2c.update()
 
-    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys] # re-init buffers
-    a2c.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
-    a2c.steps_dict = {key:0 for key in reward_keys}
+#    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys] # re-init buffers
+#    a2c.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
+#    a2c.steps_dict = {key:0 for key in reward_keys}
+    for buffer in buffers:
+        buffer.filter_success=False
+        buffer.rewards = np.empty([buffer.size], dtype=np.float32)
+        buffer.rewards[:buffer.num_in_buffer]=1.0
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
 
     def signal_handler(sig, frame):

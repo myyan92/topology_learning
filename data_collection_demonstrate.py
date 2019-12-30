@@ -2,6 +2,7 @@ import numpy as np
 import random
 import json
 import os
+from state_encoder import unifying_transform_encode
 from advanced_buffer import Buffer, get_reward_key
 import glob
 from knot_env import KnotEnv
@@ -11,10 +12,11 @@ def hash_dict(abstract_action):
     tokens = [k+'-'+str(v) for k,v in abstract_action.items()]
     return '_'.join(sorted(tokens))
 
-env = KnotEnv(8)
+env = KnotEnv(64)
 
 root = './1loop_states/'
-folders = ['annotate_0on1', 'annotate_0on2', 'annotate_2on1', 'annotate_2to0']
+#folders = ['annotate_0on1', 'annotate_0on2', 'annotate_2on1', 'annotate_2on0']
+folders = ['annotate_2on0']
 reward_key = 'move-cross_endpoint-over_sign-1'
 buffer = Buffer(reward_key, size=3000)
 
@@ -40,9 +42,11 @@ for folder in folders:
             actions = np.clip(actions, env.action_low, env.action_high)
             end_obs, rewards, dones, infos = env.step(actions)
             for ob,ac,r in zip(obs, actions, rewards):
-                pdb.set_trace()
-                if r.get('move',None)=='cross' and r.get('idx_over',None) in [0,2]:
-                    buffer.put(ob, ac, r)
+                if r.get('move',None)=='cross' and r.get('over_idx',None) in [0,2]:
+                    if r['over_idx']==2 and r['sign']==-1:
+                        ob, ac, r, _ = unifying_transform_encode(ob, ac, r)
+                    if r['sign'] == 1:
+                        buffer.put(ob, ac, 1.0, r)
             print(buffer.num_in_buffer)
 
 buffer.dump()
