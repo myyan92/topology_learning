@@ -142,7 +142,10 @@ class Model:
             self.ML_action = tf.concat([self.action_first, self.gaussian_mean], axis=-1)
 
             # state value
-            self.state_value = self.dense(final_feature, 'state_value', 1, activation=None)
+            fc1 = self.dense(final_feature, 'vf_1', 256, activation=tf.nn.relu)
+            fc2 = self.dense(fc1, 'vf_2', 256, activation=tf.nn.relu)
+            self.state_value = self.dense(fc2, 'state_value', 1, activation=None)
+
 
             self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=500)
 
@@ -247,7 +250,7 @@ class Model:
             if max_grad_norm is not None:
                 grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
             grads = list(zip(grads, params))
-            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, beta1=0.0)
             self.optimizer = optimizer.apply_gradients(grads)
 
             tf.summary.scalar('loss', self.loss)

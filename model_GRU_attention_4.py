@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from attention_layer import attention
-from conditional_MAF import masked_autoregressive_conditional
 import pdb
 
 class Model:
@@ -128,21 +127,30 @@ class Model:
             fc1 = tf.contrib.layers.layer_norm(fc1, begin_norm_axis=-1)
             fc2 = tf.layers.dense(fc1, 256, name='gaussian_fc2', activation = tf.nn.relu, use_bias=False)
             fc2 = tf.contrib.layers.layer_norm(fc2, begin_norm_axis=-1)
+            gaussian_mean_init = tf.constant_initializer([0.0,0.0,0.0,0.0,0.1])
+            self.gaussian_mean = self.dense(fc2, 'gaussian_mean', action_dim-1, activation=None,
+                                            scale=0.01, bias_init=gaussian_mean_init)
+            self.gaussian_tril_flat = self.dense(fc2, 'gaussian_tril', action_dim*(action_dim-1)//2, activation=None,
+                                                 scale=0.01)
+            self.gaussian_tril = tfp.distributions.fill_triangular(self.gaussian_tril_flat)
+            self.gaussian_tril = tfp.distributions.matrix_diag_transform(self.gaussian_tril, transform=tf.nn.softplus)
+            self.gaussian = tfp.distributions.MultivariateNormalTriL(loc=self.gaussian_mean, scale_tril=self.gaussian_tril,
+                                                                     allow_nan_stats=False)
+#            tfd = tfp.distributions
+#            tfb = tfp.bijectors
 
-            tfd = tfp.distributions
-            tfb = tfp.bijectors
-
-            self.maf = tfd.TransformedDistribution(
-                         distribution=tfd.Normal(loc=0., scale=1.),
-                         bijector=tfb.MaskedAutoregressiveFlow(
-                             shift_and_log_scale_fn=masked_autoregressive_conditional(
-                                 fc2, hidden_layers=[])),
-                         event_shape=[5], batch_shape=[tf.shape(self.input)[0]])
+#            self.maf = tfd.TransformedDistribution(
+#                         distribution=tfd.Normal(loc=0., scale=1.),
+#                         bijector=tfb.MaskedAutoregressiveFlow(
+#                             shift_and_log_scale_fn=masked_autoregressive_conditional(
+#                                 fc2, hidden_layers=[])),
+#                         event_shape=[5], batch_shape=[tf.shape(self.input)[0]])
 
             self.action_first = tf.gather(self.over_seg_pos, self.pick_point_input, batch_dims=1, axis=1)
             self.action_first = tf.squeeze(self.action_first, axis=1)
-            self.sample_action_second = self.maf.sample()
+            self.sample_action_second = self.gaussian.sample()
             self.sample_action = tf.concat([self.action_first, self.sample_action_second], axis=-1)
+            self.ML_action = tf.concat([self.action_first, self.gaussian_mean], axis=-1)
 
             # state value
             self.state_value = self.dense(final_feature, 'state_value', 1, activation=None)
@@ -237,11 +245,10 @@ class Model:
             self.reward = tf.placeholder(tf.float32, [None])
 
             # Policy loss
-            neglogpac = -self.categorical.log_prob(self.train_node_input) - self.maf.log_prob(self.train_action_second)
+            neglogpac = -self.categorical.log_prob(self.train_node_input) - self.gaussian.log_prob(self.train_action_second)
             self.pg_loss = tf.reduce_mean(self.advantage * neglogpac)
             # Entropy is used to improve exploration by limiting the premature convergence to suboptimal policy.
-            self.entropy = tf.reduce_mean(self.categorical.entropy())
-            # TODO: how to regularize entropy of MAF?
+            self.entropy = tf.reduce_mean(self.gaussian.entropy()+self.categorical.entropy())
             # Value loss
             self.vf_loss = tf.reduce_mean((tf.squeeze(self.state_value) - self.reward)**2)
             self.loss = self.pg_loss - self.entropy*ent_coef + self.vf_loss*vf_coef
@@ -280,10 +287,10 @@ class Model:
                     self.under_seg_pos: under_seg_dict['pos'],
                     self.under_seg_length: under_seg_dict['length']
         }
-        loss, debug_softmax = sess.run([self.loss, self.pick_logits], feed_dict=feed_dict)
+        loss, debug_softmax, debug_mean = sess.run([self.loss, self.pick_logits, self.gaussian_mean], feed_dict=feed_dict)
         valid_logits = debug_softmax.flatten()
         valid_logits = valid_logits[valid_logits>-300]
-        if np.any(np.isnan(debug_softmax)) or np.isnan(loss):
+        if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)) or np.isnan(loss):
             print("loss is nan")
             pdb.set_trace()
         elif np.mean(valid_logits) <= -190:

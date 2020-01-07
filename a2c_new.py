@@ -10,7 +10,10 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention_2 import Model
+from model_GRU_attention import Model as Model_v1
+from model_GRU_attention_2 import Model as Model_v2
+from model_GRU_attention_3 import Model as Model_v3
+from model_GRU_attention_4 import Model as Model_v4
 from model_stats import ModelStats
 import gin
 
@@ -47,9 +50,12 @@ class A2C():
                 # add augmentation
                 obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
-                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
+
+                state_values = self.model_dict[key].predict_batch_vf(self.sess, obs, over_seg_dict, under_seg_dict)
+                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict,
+                                         actions, rewards - state_values[:,0], rewards)
+                # self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
                 self.steps_dict[key] += 1
-                #print(self.steps_dict[key])
                 if (self.steps_dict[key] % self.log_interval == 0):
                     self.model_dict[key].save(self.sess, os.path.join(self.save_dir, 'models', 'model-%s'%(key)) , step=self.steps_dict[key])
                     stat_string = self.model_stat_dict[key].stat()
@@ -59,18 +65,27 @@ class A2C():
 def learn(
     env,
     reward_keys,
+    model_type,
     pretrain_buffers,
     total_timesteps=int(80e6),
     train_batch_size=32,
     vf_coef=0.5,
-    ent_coef=0.001, # was 0.01 before debuging 2to3.
-    max_grad_norm=0.5,
-    lr=7e-4,
+    ent_coef=0.1,
+    max_grad_norm=2000.0,
+    lr=2e-5,
     gamma=0.99,
     log_interval=10,
     save_dir='./test'):
 
-    models = [Model(key) for key in reward_keys]
+    if model_type=='Model_v1':
+        models = [Model_v1(key) for key in reward_keys]
+    if model_type=='Model_v2':
+        models = [Model_v2(key) for key in reward_keys]
+    if model_type=='Model_v3':
+        models = [Model_v3(key) for key in reward_keys]
+    if model_type=='Model_v4':
+        models = [Model_v4(key) for key in reward_keys]
+
     for model in models:
         model.build()
         model.setup_optimizer(learning_rate=lr, ent_coef=ent_coef, vf_coef=vf_coef, max_grad_norm=max_grad_norm)
@@ -100,6 +115,7 @@ def learn(
              print('dump big buffer succeed! Size:', buffer.num_in_buffer)
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     try:
         for _ in range(total_timesteps):
@@ -113,8 +129,9 @@ def learn(
 
 if __name__ == "__main__":
 
-    gin_config_file = sys.argv[1]
+    model_type = sys.argv[1]
+    gin_config_file = sys.argv[2]
     gin.parse_config_file(gin_config_file)
     env = KnotEnv(parallel=64)
-    learn(env)
+    learn(env, model_type=model_type)
 

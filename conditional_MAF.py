@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import pdb
 
 def masked_autoregressive_conditional(condition_feature,
                                       hidden_layers,
@@ -29,6 +30,8 @@ def masked_autoregressive_conditional(condition_feature,
                 raise NotImplementedError(
                     'Rightmost dimension must be known prior to graph execution.')
             input_depth = x.shape[-1]
+            output_units = (1 if shift_only else 2) * input_depth
+            hidden_layers.append(output_units)
             for i, units in enumerate(hidden_layers):
                 x = tfp.bijectors.masked_dense(
                     inputs=x,
@@ -39,18 +42,12 @@ def masked_autoregressive_conditional(condition_feature,
                 if i == 0:
                     x = x + tf.layers.dense(condition_feature, units,
                                             activation=None, use_bias=False)
+                if i < len(hidden_layers)-1:
                     x = activation(x)
-            x = tfp.bijectors.masked_dense(
-                inputs=x,
-                units=(1 if shift_only else 2) * input_depth,
-                num_blocks=input_depth,
-                activation=None)
-            if len(hidden_layers)==0:
-                x = x + tf.layers.dense(condition_feature, (1 if shift_only else 2) * input_depth,
-                                        activation=None, use_bias=False)
             if shift_only:
                 return x, None
-            shift, log_scale = tf.split(x, 2, axis=-1)
+            x = tf.reshape(x, tf.concat([tf.shape(x)[:-1], [input_depth, 2]], axis=0))
+            shift, log_scale = tf.unstack(x, 2, axis=-1)
             which_clip = (
                 tf.clip_by_value
                 if log_scale_clip_gradient else tfp.math.clip_by_value_preserve_gradient)
@@ -58,3 +55,23 @@ def masked_autoregressive_conditional(condition_feature,
             return shift, log_scale
 
     return tf.make_template(name, _fn)
+
+
+if __name__ == "__main__":
+    conditional_feat = tf.ones((6,32))
+    func = masked_autoregressive_conditional(conditional_feat, [])
+    y = tf.constant([[0,0,0,0,0],
+                     [1,0,0,0,0],
+                     [1,1,0,0,0],
+                     [1,1,1,0,0],
+                     [1,1,1,1,0],
+                     [1,1,1,1,1]], dtype=tf.float32)
+    shift, log_scale = func(y)
+
+    reference_func = tfp.bijectors.masked_autoregressive_default_template(hidden_layers=[5], activation=None)
+    ref_shift, ref_log_scale = reference_func(y)
+
+    sess=tf.Session()
+    sess.run(tf.global_variables_initializer())
+    val_shift, val_scale = sess.run([shift, log_scale])
+    pdb.set_trace()

@@ -10,7 +10,7 @@ import numpy as np
 from knot_env_multistage import KnotEnv
 from advanced_runner_multistage import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention import Model
+from model_GRU_attention_2 import Model
 from model_stats import ModelStats
 from topology.representation import AbstractState
 from planner import goal_planner
@@ -103,10 +103,10 @@ def learn(
         for _ in range(total_timesteps):
             runner.run(a2c.sess)
             a2c.update()
-        except:
-            raise
-        finally:
-            for buffer in buffers:
+    except:
+        raise
+    finally:
+        for buffer in buffers:
             buffer.dump(path=save_dir)
 
 if __name__ == "__main__":
