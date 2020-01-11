@@ -104,29 +104,36 @@ class Model:
             self.feature_over_4, self.feature_under_4, self.feature_whole_4 = prev_over, prev_under, prev_whole
 
             # general action GMM
-            fc1 = tf.layers.dense(self.feature_whole_4, 512, name='final_fc1', activation=tf.nn.relu, use_bias=False)
-            fc2 = tf.layers.dense(fc1, 256, name='final_fc2', activation=tf.nn.relu, use_bias=False)
-            fc3 = tf.layers.dense(fc2, 1, name='final_pick_logit', activation=None, use_bias=False)
+            fc1 = tf.layers.dense(self.feature_whole_4, 512, name='final_fc1', activation=tf.nn.relu)
+            fc2 = tf.layers.dense(fc1, 256, name='final_fc2', activation=tf.nn.relu)
+            fc3 = tf.layers.dense(fc2, 1, name='final_pick_logit', activation=None)
             self.pick_logits = tf.maximum(fc3, -200)
 
             self.categorical = tfp.distributions.Categorical(logits=tf.squeeze(self.pick_logits, axis=-1))
             sample_node = self.categorical.sample()
             self.sample_node = tf.expand_dims(sample_node, -1) # to use gather
-            ML_node = tf.argmax(self.pick_logits, axis=-1) # maximum likelyhood
-            self.ML_node = tf.expand_dims(ML_node, -1)
+            self.ML_node = tf.argmax(self.pick_logits, axis=-2) # maximum likelyhood
 
             self.pick_point_input = tf.placeholder(dtype=tf.int32, shape=[None,1])
 
-            self.action_feature = tf.layers.dense(fc1, 256, name='action_feature', activation=tf.nn.relu, use_bias=False)
+            self.action_feature = tf.layers.dense(fc1, 256, name='action_feature', activation=tf.nn.relu)
             pick_point_action_feature = tf.gather(self.action_feature, self.pick_point_input, batch_dims=1, axis=1)
             pick_point_action_feature = tf.squeeze(pick_point_action_feature, axis=1)
             gaussian_mean_init = tf.constant_initializer([0.0,0.0,0.0,0.0,0.1])
             self.gaussian_mean = self.dense(pick_point_action_feature, 'gaussian_mean', action_dim-1, activation=None,
                                             scale=0.01, bias_init=gaussian_mean_init)
-            self.gaussian_std = self.dense(pick_point_action_feature, 'gaussian_std', action_dim-1, activation=tf.nn.softplus,
-                                            scale=0.01, bias_init=tf.constant_initializer([-1.5,-1.5,-1.5,-1.5,-2.0]))
-            self.gaussian = tfp.distributions.MultivariateNormalDiag(loc=self.gaussian_mean,
-                                                                     scale_diag = self.gaussian_std+0.001)
+#            self.gaussian_std = self.dense(pick_point_action_feature, 'gaussian_std', action_dim-1, activation=tf.nn.softplus,
+#                                            scale=0.01, bias_init=tf.constant_initializer([-1.5,-1.5,-1.5,-1.5,-2.0]))
+#            self.gaussian = tfp.distributions.MultivariateNormalDiag(loc=self.gaussian_mean,
+#                                                                     scale_diag = self.gaussian_std+0.001)
+            self.gaussian_tril_flat = self.dense(pick_point_action_feature, 'gaussian_tril', action_dim*(action_dim-1)//2, activation=None,
+                                                 scale=0.01)
+            self.gaussian_tril = tfp.distributions.fill_triangular(self.gaussian_tril_flat)
+            self.gaussian_tril = tfp.distributions.matrix_diag_transform(self.gaussian_tril, transform=lambda x: x*10.0)
+            self.gaussian_tril = tfp.distributions.matrix_diag_transform(self.gaussian_tril, transform=tf.nn.softplus)
+            self.gaussian = tfp.distributions.MultivariateNormalTriL(loc=self.gaussian_mean, scale_tril=self.gaussian_tril,
+                                                                     allow_nan_stats=False)
+
 
             self.action_first = tf.gather(whole_pos, self.pick_point_input, batch_dims=1, axis=1)
             self.action_first = tf.squeeze(self.action_first, axis=1)
@@ -137,10 +144,10 @@ class Model:
             # state value
             state_value_feature = tf.reduce_sum(self.action_feature*tf.nn.softmax(self.pick_logits, axis=1), axis=1)
             fc1 = self.dense(state_value_feature, 'vf_fc1', 256, activation=tf.nn.relu)
-            fc2 = self.dense(fc1, 'vf_fc2', 256, activation=tf.nn.relu)   
-            self.state_value = self.dense(fc2, 'state_value', 1, activation=None)   
+            fc2 = self.dense(fc1, 'vf_fc2', 256, activation=tf.nn.relu)
+            self.state_value = self.dense(fc2, 'state_value', 1, activation=None)
 
-            self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=500)
+            self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=100)
 
     def conv_layer(self, bottom, name, channels, kernel=3, stride=1, activation=tf.nn.relu):
         with tf.variable_scope(name):
@@ -238,7 +245,7 @@ class Model:
         with tf.variable_scope(self.scope):
 
             self.train_node_input = tf.placeholder(tf.float32, [None,])
-            self.train_action_second = tf.placeholder(tf.float32, [None, 5])
+            self.train_action_second = tf.placeholder(tf.float32, self.gaussian_mean.shape)
             self.advantage = tf.placeholder(tf.float32, [None])
             self.reward = tf.placeholder(tf.float32, [None])
 

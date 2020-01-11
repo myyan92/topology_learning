@@ -14,6 +14,7 @@ from model_GRU_attention import Model as Model_v1
 from model_GRU_attention_2 import Model as Model_v2
 from model_GRU_attention_3 import Model as Model_v3
 from model_GRU_attention_4 import Model as Model_v4
+from model_GRU_attention_5 import Model as Model_v5
 from model_stats import ModelStats
 import gin
 
@@ -51,10 +52,10 @@ class A2C():
                 obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
 
-                state_values = self.model_dict[key].predict_batch_vf(self.sess, obs, over_seg_dict, under_seg_dict)
-                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict,
-                                         actions, rewards - state_values[:,0], rewards)
-                # self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
+#                state_values = self.model_dict[key].predict_batch_vf(self.sess, obs, over_seg_dict, under_seg_dict)
+#                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict,
+#                                         actions, rewards - state_values[:,0], rewards)
+                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
                 self.steps_dict[key] += 1
                 if (self.steps_dict[key] % self.log_interval == 0):
                     self.model_dict[key].save(self.sess, os.path.join(self.save_dir, 'models', 'model-%s'%(key)) , step=self.steps_dict[key])
@@ -68,7 +69,7 @@ def learn(
     model_type,
     pretrain_buffers,
     total_timesteps=int(80e6),
-    train_batch_size=32,
+    train_batch_size=256,
     vf_coef=0.5,
     ent_coef=0.1,
     max_grad_norm=2000.0,
@@ -85,6 +86,8 @@ def learn(
         models = [Model_v3(key) for key in reward_keys]
     if model_type=='Model_v4':
         models = [Model_v4(key) for key in reward_keys]
+    if model_type=='Model_v5':
+        models = [Model_v5(key) for key in reward_keys]
 
     for model in models:
         model.build()
@@ -97,7 +100,7 @@ def learn(
     model_stats = [ModelStats(model_name=key) for key in reward_keys]
 
     # pretrain
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=1, save_dir=save_dir)
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=4, save_dir=save_dir)
     a2c.update()
 
 #    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys] # re-init buffers
