@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")
+#matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from povray_render.sample_spline import sample_b_spline, sample_equdistance
 from dynamics_inference.dynamic_models import physbam_3d
@@ -37,7 +37,7 @@ class KnotEnv(object):
       action_node = int(tp[0] * 63)
       action_traj = tp[1:-1]
       height = tp[-1]
-      knots = [self.start_state[i][action_node][:2]]*3 + [action_traj[0:2]] + [action_traj[2:4]]*3
+      knots = [self.start_obs[i][action_node][:2]]*3 + [action_traj[0:2]] + [action_traj[2:4]]*3
       traj = sample_b_spline(knots)
       traj = sample_equdistance(traj, None, seg_length=0.01).transpose()
       traj_height = np.arange(traj.shape[0]) * 0.01
@@ -55,12 +55,16 @@ class KnotEnv(object):
     done = [True]*self.parallel
     info = [{}]*self.parallel
 
+    obs = []
     for i,st in enumerate(state):
       if st is None:
-        state[i] = np.zeros((64,3))
+        state[i] = np.zeros((128,3))
+        obs.append(np.zeros((64,3)))
       else:
-        start_abstract_state, start_intersections = state2topology(self.start_state[i], update_edges=True, update_faces=True)
-        end_abstract_state, end_intersections = state2topology(st, update_edges=True, update_faces=False)
+        start_abstract_state, start_intersections = state2topology(self.start_obs[i], update_edges=True, update_faces=True)
+        ob = 0.5*(st[:64]+st[64:])
+        obs.append(ob)
+        end_abstract_state, end_intersections = state2topology(ob, update_edges=True, update_faces=False)
         intersect_points = [i[0] for i in end_intersections] + [i[1] for i in end_intersections]
         if len(set(intersect_points)) == len(intersect_points):
           # the end state does not have more than 2 segments sharing 1 intersection
@@ -74,33 +78,37 @@ class KnotEnv(object):
             for path, path_action in paths:
                 if path_action[0].get('idx') == manipulate_idx or path_action[0].get('over_idx') == manipulate_idx:
                     reward[i] = path_action[0]
-
     self.end_state = state
-    return self.end_state, reward, done, info
+    self.end_obs = obs
+    return self.end_obs, reward, done, info
 
 
   def reset(self):
+    # JAN 15 changed to loading the raw states.
     self.start_state = [self.gen_state_func() for _ in range(self.parallel)]
     self.start_state = np.array(self.start_state)
     if self.random_flip and np.random.rand()>0.5:
         self.start_state[:,:,1]=-self.start_state[:,:,1] # flip
+        self.start_state = np.concatenate([self.start_state[:,64:], self.start_state[:,:64]], axis=1)
     if self.random_SE2:
         rotations = np.random.uniform(0,np.pi*2, size=(self.parallel,))
         translations = np.random.uniform(-0.1,0.1,size=(self.parallel,1,2))
         rotations = np.array([[np.cos(rotations), np.sin(rotations)],
                               [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
         self.start_state[:,:,:2] = np.matmul(self.start_state[:,:,:2], rotations) + translations
+    self.obs = 0.5*(self.start_state[:,:64]+self.start_state[:,64:])
     self.start_state = [st for st in self.start_state]
-    return self.start_state
+    self.start_obs = [ob for ob in self.obs]
+    return self.start_obs
 
 
   def render(self, mode='human', close=False):
     for i in range(self.parallel):
       plt.clf()
       plt.figure()
-      plt.plot(self.start_state[i][:, 0], self.start_state[i][:, 1], c='r', label='start')
-      plt.plot(self.end_state[i][:, 0], self.end_state[i][:, 1], c='g', label='end')
+      plt.plot(self.start_obs[i][:, 0], self.start_obs[i][:, 1], c='r', label='start')
+      plt.plot(self.end_obs[i][:, 0], self.end_obs[i][:, 1], c='g', label='end')
       plt.plot(self.traj[i][:, 0], self.traj[i][:, 1], c='b', label='traj')
       plt.legend()
-      plt.savefig('/home/myyan92/topology_learning/%s-%d.png' % (str(datetime.datetime.now()), i))
+      plt.savefig('/scr-ssd/mengyuan/topology_learning/%s-%d.png' % (str(datetime.datetime.now()), i))
       plt.close()
