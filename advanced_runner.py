@@ -42,7 +42,7 @@ class Runner(object):
         self.gamma = gamma # TODO for RRT env?
 
     def run(self, sess):
-        intended_action = [self.topo_action_func(ob, self.model_dict.keys()) for ob in self.obs]
+        intended_actions = [self.topo_action_func(ob, self.model_dict.keys()) for ob in self.obs]
         trans_obs, trans_intended_actions, transforms = [], [], []
         for obs, ia in zip(self.obs, intended_actions):
             obs_u, _, ia_u, transform = unifying_transform_encode(obs, None, ia)

@@ -30,7 +30,6 @@ class KnotEnv(object):
     if self.parallel==1 and traj_param.ndim==1:
         traj_param = traj_param[np.newaxis,:]
     assert(traj_param.shape[0] == self.parallel and traj_param.shape[1] == self.action_low.shape[0])
-    # empty dictionary means simulation failed or a trivial topological action
     traj_param = np.clip(traj_param, self.action_low, self.action_high)
     batch_actions = []
     self.traj = [] # for visualization
