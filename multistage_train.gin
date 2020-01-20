@@ -1,0 +1,26 @@
+
+KnotEnv.gen_state_func = @gen_random_state
+KnotEnv.random_flip = True
+KnotEnv.random_SE2 = True
+
+Runner.eval_save = False
+Runner.eval_render = False
+Runner.explore = True
+
+learn.reward_keys = ['move-R1_left-1_sign-1', 'move-cross_endpoint-over_sign-1', 'move-cross_endpoint-under_sign-1']
+learn.load_paths = ['0to1-moves-randstate/models/model-move-R1_left-1_sign-1-3400',
+                    '1to2-move-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-49000',
+                    '2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-1500']
+
+# 'move-cross_endpoint-over_sign-1',
+# 'move-cross_endpoint-under_sign-1',
+# 'move-R1_left-1_sign-1',
+# 'move-R2_left-1_over_before_under-1',
+# 'move-R2_left-1_diff'
+
+learn.save_dir = './multistage_overhand-randstate'
+
+
+
+
+
