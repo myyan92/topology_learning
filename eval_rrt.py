@@ -35,11 +35,12 @@ class RRT(object):
         return (priority, id, node)
 
     def sample_branch(self, parent):
-        parent = np.array(parent).reshape((64,3))
-        parent_topology, _ = state2topology(parent, update_edges=True, update_faces=False)
+        parent_state = np.array(parent).reshape((128,3))
+        parent_obs = 0.5*(parent_state[:64]+parent_state[64:])
+        parent_topology, _ = state2topology(parent_obs, update_edges=True, update_faces=False)
         parent_index = self.topology_path.index(parent_topology)
         action_sampler = self.action_sampling_funcs[parent_index]
-        traj_param = action_sampler(parent)
+        traj_param = action_sampler(parent_obs)
         traj_param = np.clip(traj_param, np.array([0.0, -0.5, -0.5, -0.5, -0.5, 0.02]),
                                          np.array([1.0, 0.5, 0.5, 0.5, 0.5, 0.2]))
         action_node = int(traj_param[0]*63)
@@ -69,6 +70,7 @@ class RRT(object):
         if child_index < parent_index:
             return None
         print("Achieving ", child_index)
+        np.savetxt('%d.txt'%(self.samples_taken), child)
         child_priority = parent_priority * 2 / (2**(child_index-parent_index))
         return child_priority
 
@@ -90,18 +92,20 @@ class RRT(object):
         while self.samples_taken < self.max_samples:
             # expand in parallel
             print("new batch")
-            parents = [self.select_node(self.tree) for _ in range(self.parallel)]
+            parents = [self.select_node(self.trees[0]) for _ in range(self.parallel)]
             trajs = [self.sample_branch(parent[2]) for parent in parents]
             parent_states = [parent[2] for parent in parents]
-            childs = self.mental_dynamics.execute_batch(parent_states, trajs, return_3d=True)
-            priorities = [self.score_priority(parent[0], parent[2], child) for parent, child in zip(parents, childs)]
-            for priority, parent, child, traj in zip(priorities, parents, childs, trajs):
+            child_states = self.mental_dynamics.execute_batch(parent_states, trajs, return_3d=True)
+            parent_obs = [0.5*(ps[:64]+ps[64:]) for ps in parent_states]
+            child_obs = [0.5*(ps[:64]+ps[64:]) for ps in child_states]
+            priorities = [self.score_priority(parent[0], parent, child) for parent, child in zip(parent_obs, child_obs)]
+            for priority, parent, child_st, child_ob, traj in zip(priorities, parents, child_states, child_obs, trajs):
                 if priority is not None:
                     self.samples_taken += 1
-                    self.tree.add_leaf(parent, (priority, self.samples_taken, child), traj)
-                    if self.is_solution(child):
-                        waypoints, actions = self.tree.reconstruct_path(child)
-                        waypoints = [np.array(w).reshape((64,3)) for w in waypoints]
+                    self.trees[0].add_leaf(parent, (priority, self.samples_taken, child_st), traj)
+                    if self.is_solution(child_ob):
+                        waypoints, actions = self.trees[0].reconstruct_path(child_st)
+                        waypoints = [np.array(w).reshape((128,3)) for w in waypoints]
                         return waypoints, actions
         print("Cannot find solution!")
         return None
@@ -113,6 +117,7 @@ import tensorflow as tf
 from model_GRU_attention import Model
 from topology.representation import AbstractState
 from topology.BFS import bfs
+from physbam_python.state_to_mesh import state_to_mesh
 from action_sampler import *
 
 
@@ -121,6 +126,8 @@ if __name__ == "__main__":
 
     init_state= np.zeros((64,3))
     init_state[:,0] = np.linspace(-0.5,0.5,64)
+    init_state = state_to_mesh(init_state)
+    init_state = init_state.dot(np.array([[1,0,0],[0,0,1],[0,-1,0]]))
 
     init_topology = AbstractState()
     topology_path = [deepcopy(init_topology)]

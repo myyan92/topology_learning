@@ -8,7 +8,7 @@ Runner.eval_render = False
 Runner.explore = True
 
 learn.reward_keys = ['move-R1_left-1_sign-1', 'move-cross_endpoint-over_sign-1', 'move-cross_endpoint-under_sign-1']
-learn.load_paths = ['0to1-moves-randstate/models/model-move-R1_left-1_sign-1-3400',
+learn.pretrained_snapshots = ['0to1-moves-randstate/models/model-move-R1_left-1_sign-1-3400',
                     '1to2-move-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-49000',
                     '2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-1500']
 

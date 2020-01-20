@@ -18,7 +18,7 @@ learn.reward_keys = ['move-cross_endpoint-over_sign-1']
 # 'move-R2_left-1_diff'
 
 learn.pretrain_buffers = ['1to2_init_buffers/move-cross_endpoint-over_sign-1_init_buffer.npz']
-learn.save_dir = './1to2-move-endpointover-sign1-randstate'
+learn.save_dir = './1to2-cross-endpointover-sign1-randstate'
 
 
 

@@ -48,7 +48,7 @@ def get_fixed_action(obs, reward_key_list, action):
 
 
 class GoalPlanner(object):
-    def __init__(self, goal):
+    def __init__(self, goal, model_keys):
         self.goal = goal
         start = AbstractState()
         paths = reverse_bfs_all_path(self.goal, start)
@@ -58,6 +58,17 @@ class GoalPlanner(object):
             path_action = [reverse_action(reverse_path_action[i], reverse_path_state[i], reverse_path_state[i+1])
                            for i in range(len(reverse_path_action))]
             path_action = path_action[::-1]
+            path_supported = True
+            for st, ac in zip(path_state, path_action):
+                unified_action = ac.copy()
+                if 'left' in unified_action:
+                    unified_action['left']=1
+                if 'sign' in unified_action:
+                    unified_action['sign']=1
+                if get_reward_key(unified_action, st) not in model_keys:
+                    path_supported = False
+            if not path_supported:
+                continue
             for st, ac in zip(path_state, path_action):
                 if st in feasible_states:
                     planned_actions[feasible_states.index(st)].append(ac)
@@ -75,19 +86,11 @@ class GoalPlanner(object):
     def reached_goal(self, state):
         return state==self.goal
 
-    def get_action(self, obs, reward_key_list):
-        state, _ = state2topology(obs, update_edges=True, update_faces=True)
+    def get_action(self, geo_state, model_keys):
+        state, _ = state2topology(geo_state, True, True)
         if self.is_feasible(state):
             actions = self.planned_actions[self.feasible_states.index(state)]
-            while True:
-                intended_action = random.choice(actions)
-                unified_action = intended_action.copy()
-                if 'left' in unified_action:
-                    unified_action['left']=1
-                if 'sign' in unified_action:
-                    unified_action['sign']=1
-                if get_reward_key(unified_action, obs) in reward_key_list:
-                   return intended_action
+            return random.choice(actions)
 
 
 def encode(obs, intended_actions):
