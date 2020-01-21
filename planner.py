@@ -47,8 +47,8 @@ def get_fixed_action(obs, reward_key_list, action):
     return action
 
 
-class goal_planner(object):
-    def __init__(self, goal):
+class GoalPlanner(object):
+    def __init__(self, goal, model_keys):
         self.goal = goal
         start = AbstractState()
         paths = reverse_bfs_all_path(self.goal, start)
@@ -58,6 +58,17 @@ class goal_planner(object):
             path_action = [reverse_action(reverse_path_action[i], reverse_path_state[i], reverse_path_state[i+1])
                            for i in range(len(reverse_path_action))]
             path_action = path_action[::-1]
+            path_supported = True
+            for st, ac in zip(path_state, path_action):
+                unified_action = ac.copy()
+                if 'left' in unified_action:
+                    unified_action['left']=1
+                if 'sign' in unified_action:
+                    unified_action['sign']=1
+                if get_reward_key(unified_action, st) not in model_keys:
+                    path_supported = False
+            if not path_supported:
+                continue
             for st, ac in zip(path_state, path_action):
                 if st in feasible_states:
                     planned_actions[feasible_states.index(st)].append(ac)

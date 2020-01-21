@@ -24,7 +24,7 @@ class KnotEnv(object):
     self.parallel = parallel
     self.max_step = max_step
     self.planner_not_feasible = planner_not_feasible_func
-    self.planner_reached_goal_func = planner_reached_goal_func
+    self.planner_reached_goal = planner_reached_goal_func
     self.gen_state_func = gen_state_func
     self.random_flip = random_flip
     self.random_SE2 = random_SE2
@@ -41,7 +41,7 @@ class KnotEnv(object):
       action_node = int(tp[0] * 63)
       action_traj = tp[1:-1]
       height = tp[-1]
-      knots = [self.state[i][action_node][:2]]*3 + [action_traj[0:2]] + [action_traj[2:4]]*3
+      knots = [self.obs[i][action_node][:2]]*3 + [action_traj[0:2]] + [action_traj[2:4]]*3
       traj = sample_b_spline(knots)
       traj = sample_equdistance(traj, None, seg_length=0.01).transpose()
       traj_height = np.arange(traj.shape[0]) * 0.01
@@ -60,38 +60,50 @@ class KnotEnv(object):
     done = [False]*self.parallel
     info = [{}]*self.parallel
 
+    obs = []
     for i,st in enumerate(state):
       if st is None:
-        state[i] = np.zeros((64,3))
+        state[i] = np.zeros((128,3))
+        obs.append(np.zeros((64,3)))
         done[i] = True
       else:
-        start_abstract_state, start_intersections = state2topology(self.state[i], update_edges=True, update_faces=True)
-        end_abstract_state, end_intersections = state2topology(st, update_edges=True, update_faces=False)
+        start_abstract_state, start_intersections = state2topology(self.obs[i], update_edges=True, update_faces=True)
+        ob = 0.5*(st[:64]+st[64:])
+        obs.append(ob)
+        end_abstract_state, end_intersections = state2topology(ob, update_edges=True, update_faces=False)
         intersect_points = [i[0] for i in end_intersections] + [i[1] for i in end_intersections]
         if len(set(intersect_points)) != len(intersect_points):
           done[i] = True # this is a bad topo state to continue
-        else:
-          paths = bfs_all_path(start_abstract_state, end_abstract_state, max_depth=1)
-          if len(paths)==1 and len(paths[0][1])==1:  # there is only one possible topological action
-            reward[i] = paths[0][1][0] # the type of topological action
-          if len(paths) > 1:  # there are multiple possibilities
-            start_intersect = [i[0] for i in start_intersections] + [i[1] for i in start_intersections]
-            start_intersect.sort()
-            manipulate_idx = np.searchsorted(start_intersect, traj_param[i,0]*63)
-            for path, path_action in paths:
-                if path_action[0].get('idx') == manipulate_idx or path_action[0].get('over_idx') == manipulate_idx:
-                    reward[i] = path_action[0]
-          if self.planner_not_feasible(end_abstract_state):
-            done[i] = True
-          if self.planner_reached_goal(end_abstract_state):
-            done[i] = True
-          if self.steps[i] >= self.max_step:
-            done[i] = True
+          continue
+        intersect_points.sort()
+        diff = np.array([0] + intersect_points + [63])
+        diff = diff[1:] - diff[:-1]
+        if np.any(diff < 5):
+          done[i] = True # some segment too short to continue
+          continue
 
-    self.prev_state = self.state
+        paths = bfs_all_path(start_abstract_state, end_abstract_state, max_depth=1)
+        if len(paths)==1 and len(paths[0][1])==1:  # there is only one possible topological action
+          reward[i] = paths[0][1][0] # the type of topological action
+        if len(paths) > 1:  # there are multiple possibilities
+          start_intersect = [i[0] for i in start_intersections] + [i[1] for i in start_intersections]
+          start_intersect.sort()
+          manipulate_idx = np.searchsorted(start_intersect, traj_param[i,0]*63)
+          for path, path_action in paths:
+            if path_action[0].get('idx') == manipulate_idx or path_action[0].get('over_idx') == manipulate_idx:
+              reward[i] = path_action[0]
+        if self.planner_not_feasible(end_abstract_state):
+          done[i] = True
+        if self.planner_reached_goal(end_abstract_state):
+          done[i] = True
+        if self.steps[i] >= self.max_step:
+          done[i] = True
+
+    self.prev_obs = self.obs
     self.state = state
+    self.obs = obs
     self.done = done
-    return state, reward, done, info
+    return obs, reward, done, info
 
 
   def reset(self):
@@ -103,13 +115,15 @@ class KnotEnv(object):
             self.state[i] = self.gen_state_func()
             if self.random_flip and np.random.rand()>0.5:
                 self.state[i][:,1] = -self.state[i][:,1]
+                self.state[i] = np.concatenate([self.state[i][64:], self.state[i][:64]], axis=0)
             if self.random_SE2:
                 rotation = np.random.uniform(0,np.pi*2)
                 translation = np.random.uniform(-0.1, 0.1, size=(1,2))
-                rotation = np.array([[np.cos(rotations), np.sin(rotations)],
-                                     [-np.sin(rotations), np.cos(rotations)]])
-                self.state[i] = np.dot(self.state[i], rotation) + translation
-    return self.state
+                rotation = np.array([[np.cos(rotation), np.sin(rotation)],
+                                     [-np.sin(rotation), np.cos(rotation)]])
+                self.state[i][:,:2] = np.dot(self.state[i][:,:2], rotation) + translation
+                self.obs[i] = 0.5*(self.state[i][:64]+self.state[i][64:])
+    return self.obs
 
 
   def hard_reset(self):
@@ -118,24 +132,27 @@ class KnotEnv(object):
     self.state = np.array(self.state)
     if self.random_flip and np.random.rand()>0.5:
         self.state[:,:,1]=-self.state[:,:,1] # flip
+        self.state = np.concatenate([self.state[:,64:], self.state[:,:64]], axis=1)
     if self.random_SE2:
         rotations = np.random.uniform(0,np.pi*2, size=(self.parallel,))
         translations = np.random.uniform(-0.1,0.1,size=(self.parallel,1,2))
         rotations = np.array([[np.cos(rotations), np.sin(rotations)],
                               [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
         self.state[:,:,:2] = np.matmul(self.state[:,:,:2], rotations) + translations
+    self.obs = 0.5*(self.state[:,:64]+self.state[:,64:])
     self.state = [st for st in self.state]
+    self.obs = [ob for ob in self.obs]
     self.done = [False] * self.parallel
     self.steps = [0] * self.parallel
-    return self.state
+    return self.obs
 
 
   def render(self, mode='human', close=False):
     for i in range(self.parallel):
       plt.clf()
       plt.figure()
-      plt.plot(self.state[i][:, 0], self.state[i][:, 1], c='r', label='start')
-      plt.plot(self.prev_state[i][:, 0], self.prev_state[i][:, 1], c='g', label='end')
+      plt.plot(self.obs[i][:, 0], self.obs[i][:, 1], c='r', label='start')
+      plt.plot(self.prev_obs[i][:, 0], self.prev_obs[i][:, 1], c='g', label='end')
       plt.plot(self.traj[i][:, 0], self.traj[i][:, 1], c='b', label='traj')
       plt.legend()
       plt.savefig('/home/myyan92/topology_learning/%s-%d.png' % (str(datetime.datetime.now()), i))

@@ -5,7 +5,7 @@ import tensorflow as tf
 import numpy as np
 
 #from model_GRU import Model
-from model_GRU_attention import Model
+from model_GRU_attention_2 import Model
 
 from planner import encode
 from state_encoder import unifying_transform_encode, unifying_transform_decode
@@ -52,14 +52,20 @@ def visualize(
         trans_obs.append(obs_u)
     model_inputs = encode(trans_obs, [trans_intended_action]*len(states))
     state_values = model.predict_batch_vf(sess, *model_inputs)
-
+    actions = model.predict_batch(sess, *model_inputs) # only for model v2
+    action_nodes = (actions[:,0]-model_inputs[1]['pos'][:,0,0])*63
     feed_dict = {model.input: model_inputs[0],
                  model.over_seg_obs: model_inputs[1]['obs'],
                  model.over_seg_pos: model_inputs[1]['pos'],
                  model.over_seg_length: model_inputs[1]['length'],
                  model.under_seg_obs: model_inputs[2]['obs'],
                  model.under_seg_pos: model_inputs[2]['pos'],
+<<<<<<< HEAD
                  model.under_seg_length: model_inputs[2]['length']}
+=======
+                 model.under_seg_length: model_inputs[2]['length'],
+                 model.pick_point_input: action_nodes.astype(np.int32)[:,np.newaxis]}
+>>>>>>> acec1fccab799e9eb2e95bcfe3c7605911c483a3
     pick_probs, gaussian_means, gaussian_stds = sess.run([model.categorical.probs, model.gaussian_mean, model.gaussian_std], feed_dict=feed_dict)
 
     # saving
@@ -80,8 +86,8 @@ def visualize(
         plt.close()
 
 if __name__ == "__main__":
-    env = KnotEnv(parallel=90)
-    eval(env, 'move-cross_endpoint-under_sign-1', load_path='./2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-12400')
-#    eval(env, 'move-cross_endpoint-over_sign-1', load_path='./1to2-move-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-49990')
-#    eval(env, 'move-R1_left-1_sign-1', load_path='./0to1-R1-left1-sign1-augstart/models/model-move-R1_left-1_sign-1-1860')
-#    eval(env, 'move-R2_left-1_over_before_under-1', load_path = './0to1-R2-left1-obu1-augstart/models/model-move-R2_left-1_over_before_under-1-6740')
+#    visualize('move-cross_endpoint-under_sign-1', load_path='./2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-12400')
+#    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-1800')
+    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate_tmp/models/model-move-cross_endpoint-over_sign-1-390')
+#    visualize('move-R1_left-1_sign-1', load_path='./0to1-R1-left1-sign1-augstart/models/model-move-R1_left-1_sign-1-1860')
+#    visualize('move-R2_left-1_over_before_under-1', load_path = './0to1-R2-left1-obu1-augstart/models/model-move-R2_left-1_over_before_under-1-6740')
