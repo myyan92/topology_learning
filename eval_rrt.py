@@ -96,8 +96,8 @@ class RRT(object):
             trajs = [self.sample_branch(parent[2]) for parent in parents]
             parent_states = [parent[2] for parent in parents]
             child_states = self.mental_dynamics.execute_batch(parent_states, trajs, return_traj=False, reset_spring=True)
-            parent_obs = [0.5*(ps[:64]+ps[64:]) for ps in parent_states]
-            child_obs = [0.5*(ps[:64]+ps[64:]) for ps in child_states]
+            parent_obs = [0.5*(ps[:64]+ps[64:]) if ps is not None else None for ps in parent_states]
+            child_obs = [0.5*(ps[:64]+ps[64:]) if ps is not None else None for ps in child_states]
             priorities = [self.score_priority(parent_node[0], parent, child) for parent_node, parent, child in zip(parents, parent_obs, child_obs)]
             for priority, parent, child_st, child_ob, traj in zip(priorities, parents, child_states, child_obs, trajs):
                 if priority is not None:
