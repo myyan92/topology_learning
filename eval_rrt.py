@@ -92,19 +92,19 @@ class RRT(object):
         while self.samples_taken < self.max_samples:
             # expand in parallel
             print("new batch")
-            parents = [self.select_node(self.trees[0]) for _ in range(self.parallel)]
+            parents = [self.select_node(self.tree) for _ in range(self.parallel)]
             trajs = [self.sample_branch(parent[2]) for parent in parents]
             parent_states = [parent[2] for parent in parents]
-            child_states = self.mental_dynamics.execute_batch(parent_states, trajs, return_3d=True)
+            child_states = self.mental_dynamics.execute_batch(parent_states, trajs, return_traj=False, reset_spring=True)
             parent_obs = [0.5*(ps[:64]+ps[64:]) for ps in parent_states]
             child_obs = [0.5*(ps[:64]+ps[64:]) for ps in child_states]
-            priorities = [self.score_priority(parent[0], parent, child) for parent, child in zip(parent_obs, child_obs)]
+            priorities = [self.score_priority(parent_node[0], parent, child) for parent_node, parent, child in zip(parents, parent_obs, child_obs)]
             for priority, parent, child_st, child_ob, traj in zip(priorities, parents, child_states, child_obs, trajs):
                 if priority is not None:
                     self.samples_taken += 1
-                    self.trees[0].add_leaf(parent, (priority, self.samples_taken, child_st), traj)
+                    self.tree.add_leaf(parent, (priority, self.samples_taken, child_st), traj)
                     if self.is_solution(child_ob):
-                        waypoints, actions = self.trees[0].reconstruct_path(child_st)
+                        waypoints, actions = self.tree.reconstruct_path(child_st)
                         waypoints = [np.array(w).reshape((128,3)) for w in waypoints]
                         return waypoints, actions
         print("Cannot find solution!")
