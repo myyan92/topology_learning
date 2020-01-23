@@ -82,6 +82,7 @@ def visualize(
         plt.close()
 
 if __name__ == "__main__":
+    env = KnotEnv(parallel=64)
 #    visualize('move-cross_endpoint-under_sign-1', load_path='./2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-12400')
 #    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-1800')
     visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate_tmp/models/model-move-cross_endpoint-over_sign-1-390')

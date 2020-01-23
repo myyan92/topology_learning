@@ -47,7 +47,7 @@ def get_fixed_action(obs, reward_key_list, action):
     return action
 
 
-class goal_planner(object):
+class GoalPlanner(object):
     def __init__(self, goal, model_keys):
         self.goal = goal
         start = AbstractState()
