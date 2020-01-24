@@ -5,7 +5,7 @@ import tensorflow as tf
 import numpy as np
 
 #from model_GRU import Model
-from model_GRU_attention_2 import Model
+from model_GRU_attention_5 import Model
 
 from planner import encode
 from state_encoder import unifying_transform_encode, unifying_transform_decode
@@ -41,10 +41,11 @@ def visualize(
 
     # load states
     states = []
-    files = glob.glob('1loop_states/*.txt')
+    files = glob.glob('1loop_states/???.txt')
     files.sort()
     for f in files:
         states.append(np.loadtxt(f))
+#    states = [state*np.array([-1.0,-1.0,1.0]) for state in states]
     intended_action = {'move':'cross', 'over_idx':0, 'under_idx':1, 'sign':1}
     trans_obs = []
     for st in states:
@@ -53,6 +54,7 @@ def visualize(
     model_inputs = encode(trans_obs, [trans_intended_action]*len(states))
     state_values = model.predict_batch_vf(sess, *model_inputs)
     actions = model.predict_batch(sess, *model_inputs) # only for model v2
+    pdb.set_trace()
     action_nodes = (actions[:,0]-model_inputs[1]['pos'][:,0,0])*63
     feed_dict = {model.input: model_inputs[0],
                  model.over_seg_obs: model_inputs[1]['obs'],
@@ -62,14 +64,17 @@ def visualize(
                  model.under_seg_pos: model_inputs[2]['pos'],
                  model.under_seg_length: model_inputs[2]['length'],
                  model.pick_point_input: action_nodes.astype(np.int32)[:,np.newaxis]}
-    pick_probs, gaussian_means, gaussian_stds = sess.run([model.categorical.probs, model.gaussian_mean, model.gaussian_std], feed_dict=feed_dict)
+
+    pick_probs, gaussian_means, gaussian_tril = sess.run([model.categorical.probs, model.gaussian_mean, model.gaussian_tril], feed_dict=feed_dict)
+    gaussian_stds = np.diagonal(gaussian_tril, axis1=1, axis2=2)
 
     # saving
     with open('visualize/state_values.txt', 'w') as fout:
         for vf, f in zip(state_values, files):
             fout.write('%s: %f\n'%(f, vf))
+    pdb.set_trace()
     # plotting
-    for f,st,vf,pp,mu,std in zip(files, states, state_values, pick_probs, gaussian_means, gaussian_stds):
+    for f,st,vf,pp,mu,std in zip(files, trans_obs, state_values, pick_probs, gaussian_means, gaussian_stds):
         fig, ax = plt.subplots(subplot_kw={'aspect': 'equal'})
         ax.scatter(st[:,0],st[:,1], c=np.arange(64), label='value=%f'%(vf))
         # plot pick probs?
@@ -82,9 +87,8 @@ def visualize(
         plt.close()
 
 if __name__ == "__main__":
-    env = KnotEnv(parallel=64)
-#    visualize('move-cross_endpoint-under_sign-1', load_path='./2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-12400')
+#    visualize('move-cross_endpoint-under_sign-1', load_path='./2to3-cross-endpointunder-sign1-randstate-GMM_layernorm/models/model-move-cross_endpoint-under_sign-1-9900')
 #    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-1800')
-    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate_tmp/models/model-move-cross_endpoint-over_sign-1-390')
+    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate_m5/models/model-move-cross_endpoint-over_sign-1-660')
 #    visualize('move-R1_left-1_sign-1', load_path='./0to1-R1-left1-sign1-augstart/models/model-move-R1_left-1_sign-1-1860')
 #    visualize('move-R2_left-1_over_before_under-1', load_path = './0to1-R2-left1-obu1-augstart/models/model-move-R2_left-1_over_before_under-1-6740')

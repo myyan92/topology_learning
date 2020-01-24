@@ -47,7 +47,8 @@ class A2C():
     def update(self):
         for key in self.buffer_dict:
             while self.buffer_dict[key].has_atleast(self.replay_start+self.replay_grow*self.steps_dict[key]):
-                obs, actions, rewards, over_seg_dict, under_seg_dict = self.buffer_dict[key].get(self.train_batch_size)
+                obs, actions, rewards, over_seg_dict, under_seg_dict, probs = self.buffer_dict[key].get(self.train_batch_size)
+                probs = np.ones_like(probs)*2000.0
                 # add augmentation
                 obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
@@ -55,7 +56,7 @@ class A2C():
 #                state_values = self.model_dict[key].predict_batch_vf(self.sess, obs, over_seg_dict, under_seg_dict)
 #                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict,
 #                                         actions, rewards - state_values[:,0], rewards)
-                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
+                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards, probs)
                 self.steps_dict[key] += 1
                 if (self.steps_dict[key] % self.log_interval == 0):
                     self.model_dict[key].save(self.sess, os.path.join(self.save_dir, 'models', 'model-%s'%(key)) , step=self.steps_dict[key])
@@ -70,10 +71,10 @@ def learn(
     pretrain_buffers,
     total_timesteps=int(80e6),
     train_batch_size=256,
-    vf_coef=0.5,
-    ent_coef=0.1,
+    vf_coef=0.0,
+    ent_coef=0.005,
     max_grad_norm=2000.0,
-    lr=2e-5,
+    lr=1e-4,
     gamma=0.99,
     log_interval=10,
     save_dir='./test'):
@@ -135,6 +136,6 @@ if __name__ == "__main__":
     model_type = sys.argv[1]
     gin_config_file = sys.argv[2]
     gin.parse_config_file(gin_config_file)
-    env = KnotEnv(parallel=64)
+    env = KnotEnv(parallel=32)
     learn(env, model_type=model_type)
 

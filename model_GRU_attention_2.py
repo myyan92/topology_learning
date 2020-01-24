@@ -232,13 +232,15 @@ class Model:
         with tf.variable_scope(self.scope):
 
             self.train_node_input = tf.placeholder(tf.float32, [None,])
-            self.train_action_second = tf.placeholder(tf.float32, [None, 5])
+            self.train_action_second = tf.placeholder(tf.float32, self.gaussian_mean.shape)
             self.advantage = tf.placeholder(tf.float32, [None])
             self.reward = tf.placeholder(tf.float32, [None])
+            self.prev_prob = tf.placeholder(tf.float32, [None])
 
             # Policy loss
             neglogpac = -self.categorical.log_prob(self.train_node_input) - self.gaussian.log_prob(self.train_action_second)
-            self.pg_loss = tf.reduce_mean(self.advantage * neglogpac)
+            pac = self.categorical.prob(self.train_node_input) * self.gaussian.prob(self.train_action_second)
+            self.pg_loss = tf.reduce_mean(self.advantage * tf.stop_gradient(pac) / self.prev_prob * neglogpac)
             # Entropy is used to improve exploration by limiting the premature convergence to suboptimal policy.
             self.entropy = tf.reduce_mean(self.gaussian.entropy()+self.categorical.entropy())
             # Value loss
@@ -250,7 +252,7 @@ class Model:
             if max_grad_norm is not None:
                 grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
             grads = list(zip(grads, params))
-            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, beta1=0.0)
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
             self.optimizer = optimizer.apply_gradients(grads)
 
             tf.summary.scalar('loss', self.loss)
@@ -259,7 +261,7 @@ class Model:
             tf.summary.scalar('entropy', self.entropy)
             self.merged_summary = tf.summary.merge_all()
 
-    def fit(self, sess, obs, over_seg_dict, under_seg_dict, actions, advantages, rewards):
+    def fit(self, sess, obs, over_seg_dict, under_seg_dict, actions, advantages, rewards, prev_prob):
         nodes = actions[:,0]
         node_index = (nodes-over_seg_dict['pos'][:,0,0])*63
         legal_actions = np.all(node_index < over_seg_dict['length']) and np.all(node_index>=0)
@@ -272,6 +274,7 @@ class Model:
                     self.pick_point_input:node_index[:,np.newaxis].astype(np.int32),
                     self.advantage:advantages,
                     self.reward:rewards,
+                    self.prev_prob:prev_prob,
                     self.over_seg_obs: over_seg_dict['obs'],
                     self.over_seg_pos: over_seg_dict['pos'],
                     self.over_seg_length: over_seg_dict['length'],
@@ -279,7 +282,10 @@ class Model:
                     self.under_seg_pos: under_seg_dict['pos'],
                     self.under_seg_length: under_seg_dict['length']
         }
-        loss, debug_softmax, debug_mean = sess.run([self.loss, self.pick_logits, self.gaussian_mean], feed_dict=feed_dict)
+        loss, debug_softmax, debug_mean, debug_std = sess.run([self.loss, self.categorical.probs, self.gaussian_mean, self.gaussian_std],
+                                                              feed_dict=feed_dict)
+        print(debug_softmax[0])
+        print(debug_std[0])
         valid_logits = debug_softmax.flatten()
         valid_logits = valid_logits[valid_logits>-300]
         if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)) or np.isnan(loss):

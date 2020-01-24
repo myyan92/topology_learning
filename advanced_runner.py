@@ -42,6 +42,11 @@ class Runner(object):
         self.gamma = gamma # TODO for RRT env?
 
     def run(self, sess):
+        # HACK
+#        for i in range(len(self.obs)):
+#            self.env.start_state[i]=np.loadtxt('./1loop_states/%03d.txt'%(i))
+#        self.obs=self.env.start_state
+
         intended_actions = [self.topo_action_func(ob, self.model_dict.keys()) for ob in self.obs]
         trans_obs, trans_intended_actions, transforms = [], [], []
         for obs, ia in zip(self.obs, intended_actions):
@@ -51,6 +56,7 @@ class Runner(object):
             transforms.append(transform)
         reward_keys = [get_reward_key(ia_u, obs_u) for ia_u, obs_u in zip(trans_intended_actions, trans_obs)]
         trans_actions = [None]*len(self.obs)
+        actions_probs = [None]*len(self.obs)
         model_keys = set(reward_keys)
         for key in model_keys:
             model = self.model_dict[key]
@@ -59,10 +65,12 @@ class Runner(object):
             model_inputs = encode(sublist_trans_obs, sublist_trans_ia)
             sublist_trans_actions = model.predict_batch(sess, *model_inputs, explore=self.explore)
             sublist_trans_actions = np.clip(sublist_trans_actions, self.env.action_low, self.env.action_high)
+            sublist_trans_actions_prob = model.predict_batch_prob(sess, *model_inputs, action=sublist_trans_actions)
             idx = 0
             for i,k in enumerate(reward_keys):
                 if k==key:
                     trans_actions[i]=sublist_trans_actions[idx]
+                    actions_probs[i]=sublist_trans_actions_prob[idx]
                     idx += 1
 
         actions = []
@@ -71,14 +79,15 @@ class Runner(object):
             actions.append(ac)
         actions = np.array(actions)
 
+        pdb.set_trace()
         obs, rewards, dones, infos = self.env.step(actions)
-
-        for ob_u, ac_u, r, ia, ia_u, key in zip(trans_obs, trans_actions, rewards, intended_actions, trans_intended_actions, reward_keys):
+        for ob_u, ac_u, r, pb, ia, ia_u, key in zip(trans_obs, trans_actions, rewards, actions_probs,
+                                                    intended_actions, trans_intended_actions, reward_keys):
             stats = self.model_stats_dict[key]
             reward = 1.0 if hash_dict(r) == hash_dict(ia) else 0.0
             stats.put(reward)
             if key in self.buffer_dict:
-                self.buffer_dict[key].put(ob_u, ac_u, reward, ia_u)
+                self.buffer_dict[key].put(ob_u, ac_u, reward, ia_u, pb)
 
         if self.eval_render:
             self.env.render()

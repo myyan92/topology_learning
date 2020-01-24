@@ -9,20 +9,22 @@ import sys, os
 root_dir = sys.argv[1]
 # open loop actions
 actions = []
-for i in range(3):
+waypoints = np.load(os.path.join(root_dir, 'rrt_waypoints.npy'))
+num_trajs = waypoints.shape[0]-1
+for i in range(num_trajs):
     action = np.load(os.path.join(root_dir, 'rrt_actions_%d.npy'%(i)), allow_pickle=True)
 #    action = [np.insert(ac[1], 3, ac[0]/63.0) for ac in action]
 #    actions.append(np.array(action))
     actions.append(list(action))
 
-waypoints = np.load(os.path.join(root_dir, 'rrt_waypoints.npy'))
 
-physbam_args = ' -friction 0.13688 -stiffen_linear 0.23208 -stiffen_bending 0.64118 -self_friction 0.46488'
+physbam_args = ' -friction 0.13688 -stiffen_linear 0.23208 -stiffen_bending 0.64118 -self_friction 0.46488' # -rope_width 0.005'
 dynamics = physbam_3d(physbam_args)
 
 state = waypoints[0]
-state = state_to_mesh(state)
-state = state.dot(np.array([[1,0,0],[0,0,1],[0,-1,0]]))
+
+#state = state_to_mesh(state)
+#state = state.dot(np.array([[1,0,0],[0,0,1],[0,-1,0]]))
 state_trajs = []
 for i,action in enumerate(actions):
     state_traj = dynamics.execute(state, action, return_traj=True, reset_spring=True)
@@ -34,5 +36,3 @@ for i,action in enumerate(actions):
     state_trajs.extend(state_traj)
     state = state_traj[-1]
 
-print(len(state_traj))
-pdb.set_trace()
