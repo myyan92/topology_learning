@@ -15,7 +15,7 @@ import gin
 def eval(
     env,
     model_key,
-    eval_size=56,
+    eval_size=192,
     load_path=None):
 
     model = Model(model_key)
@@ -31,8 +31,8 @@ def eval(
         model.load(sess, load_path)
 
     # hack reduce gaussian std
-    #gaussian_logstd = sess.run(model.gaussian_logstd)
-    #sess.run(tf.assign(model.gaussian_logstd, gaussian_logstd-1.0))
+    #gaussian_tril = sess.run(model.gaussian_tril)
+    #sess.run(tf.assign(model.gaussian_tril, gaussian_tril/2.0))
     #vars = model.get_trainable_variables()
     #vars = [v for v in vars if 'gaussian_logstd' in v.name]
     #vars = [v for v in vars if 'bias' in v.name]

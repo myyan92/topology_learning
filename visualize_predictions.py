@@ -87,7 +87,7 @@ def visualize(
         plt.close()
 
 if __name__ == "__main__":
-#    visualize('move-cross_endpoint-under_sign-1', load_path='./2to3-cross-endpointunder-sign1-randstate-GMM_layernorm/models/model-move-cross_endpoint-under_sign-1-9900')
+#    visualize('move-cross_endpoint-under_sign-1', load_path='./2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-12400')
 #    visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-1800')
     visualize('move-cross_endpoint-over_sign-1', load_path='./1to2-cross-endpointover-sign1-randstate_m5/models/model-move-cross_endpoint-over_sign-1-660')
 #    visualize('move-R1_left-1_sign-1', load_path='./0to1-R1-left1-sign1-augstart/models/model-move-R1_left-1_sign-1-1860')

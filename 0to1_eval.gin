@@ -1,0 +1,26 @@
+
+load_random_state.file_pattern = './1loop_states/*.txt'
+
+KnotEnv.gen_state_func = @gen_random_state
+KnotEnv.random_flip = False
+KnotEnv.random_SE2 = True
+
+Runner.topo_action_func = @get_fixed_action
+get_fixed_action.action = {'move':'R1', 'idx':0, 'left':1, 'sign':1}
+Runner.eval_save = False
+Runner.eval_render = False
+Runner.explore = True
+
+eval.model_key = 'move-R1_left-1_sign-1'
+# 'move-cross_endpoint-over_sign-1',
+# 'move-cross_endpoint-under_sign-1',
+# 'move-R1_left-1_sign-1',
+# 'move-R2_left-1_over_before_under-1',
+# 'move-R2_left-1_diff'
+
+eval.load_path = './0to1-moves-randstate/models/model-move-R1_left-1_sign-1-9300'
+
+
+
+
+

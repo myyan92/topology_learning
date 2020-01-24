@@ -1,5 +1,5 @@
 
-load_random_state.file_pattern = './1loop_states/*.txt'
+load_random_state.file_pattern = './1loop_states/*_raw.txt'
 
 KnotEnv.gen_state_func = @load_random_state
 KnotEnv.random_flip = True
@@ -17,7 +17,7 @@ learn.reward_keys = ['move-cross_endpoint-over_sign-1']
 # 'move-R2_left-1_over_before_under-1',
 # 'move-R2_left-1_diff'
 
-learn.pretrain_buffers = ['1to2_init_buffers/move-cross_endpoint-over_sign-1_init_buffer_multistate_IS.npz']
+learn.pretrain_buffers = ['1to2_init_buffers/move-cross_endpoint-over_sign-1_init_buffer_multistate.npz']
 learn.save_dir = './1to2-cross-endpointover-sign1-randstate_m5'
 
 

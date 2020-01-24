@@ -1,5 +1,5 @@
 
-load_random_state.file_pattern = './2intersect_states/*.txt'
+load_random_state.file_pattern = './2intersect_states/014.txt'
 
 KnotEnv.gen_state_func = @load_random_state
 KnotEnv.random_flip = True
