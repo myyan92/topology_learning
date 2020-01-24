@@ -70,10 +70,10 @@ def learn(
     pretrain_buffers,
     total_timesteps=int(80e6),
     train_batch_size=256,
-    vf_coef=0.5,
-    ent_coef=0.1,
+    vf_coef=0.0,
+    ent_coef=0.0,
     max_grad_norm=2000.0,
-    lr=2e-5,
+    lr=1e-4,
     gamma=0.99,
     log_interval=10,
     save_dir='./test'):
@@ -100,7 +100,7 @@ def learn(
     model_stats = [ModelStats(model_name=key) for key in reward_keys]
 
     # pretrain
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=4, save_dir=save_dir)
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=1, save_dir=save_dir)
     a2c.update()
 
 #    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys] # re-init buffers

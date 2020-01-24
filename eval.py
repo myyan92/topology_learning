@@ -7,7 +7,7 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention import Model
+from model_GRU_attention_5 import Model
 from model_stats import ModelStats
 import gin
 
@@ -15,7 +15,7 @@ import gin
 def eval(
     env,
     model_key,
-    eval_size=90,
+    eval_size=192,
     load_path=None):
 
     model = Model(model_key)
@@ -31,8 +31,8 @@ def eval(
         model.load(sess, load_path)
 
     # hack reduce gaussian std
-    #gaussian_logstd = sess.run(model.gaussian_logstd)
-    #sess.run(tf.assign(model.gaussian_logstd, gaussian_logstd-1.0))
+    #gaussian_tril = sess.run(model.gaussian_tril)
+    #sess.run(tf.assign(model.gaussian_tril, gaussian_tril/2.0))
     #vars = model.get_trainable_variables()
     #vars = [v for v in vars if 'gaussian_logstd' in v.name]
     #vars = [v for v in vars if 'bias' in v.name]
@@ -52,5 +52,5 @@ if __name__ == "__main__":
 
     gin_config_file = sys.argv[1]
     gin.parse_config_file(gin_config_file)
-    env = KnotEnv(parallel=16)
+    env = KnotEnv(parallel=64)
     eval(env)

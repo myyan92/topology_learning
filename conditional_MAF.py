@@ -12,49 +12,53 @@ def masked_autoregressive_conditional(condition_feature,
                                       name=None,
                                       *args,  # pylint: disable=keyword-arg-before-vararg
                                       **kwargs):
-    """Build the Masked Autoregressive Density Estimator (Germain et al., 2015).
-    This will be wrapped in a make_template to ensure the variables are only
-    created once. It takes the input and returns the `loc` ('mu' in [Germain et
-    al. (2015)][1]) and `log_scale` ('alpha' in [Germain et al. (2015)][1]) from
-     the MADE network.
-    Warning: This function uses `masked_dense` to create randomly initialized
-    `tf.Variables`. It is presumed that these will be fit, just as you would any
-    other neural architecture which uses `tf.layers.dense`.
-    """
+  """Build the Masked Autoregressive Density Estimator (Germain et al., 2015).
+  This will be wrapped in a make_template to ensure the variables are only
+  created once. It takes the input and returns the `loc` ('mu' in [Germain et
+  al. (2015)][1]) and `log_scale` ('alpha' in [Germain et al. (2015)][1]) from
+   the MADE network.
+  Warning: This function uses `masked_dense` to create randomly initialized
+  `tf.Variables`. It is presumed that these will be fit, just as you would any
+  other neural architecture which uses `tf.layers.dense`.
+  """
 
-    name = name or 'masked_autoregressive_conditional'
-    with tf.name_scope(name):
+  name = name or "masked_autoregressive_default_template"
+  with tf.compat.v2.name_scope(name):
 
-        def _fn(x):
-            if x.shape[-1] is None:
-                raise NotImplementedError(
-                    'Rightmost dimension must be known prior to graph execution.')
-            input_depth = x.shape[-1]
-            output_units = (1 if shift_only else 2) * input_depth
-            hidden_layers.append(output_units)
-            for i, units in enumerate(hidden_layers):
-                x = tfp.bijectors.masked_dense(
-                    inputs=x,
-                    units=units,
-                    num_blocks=input_depth,
-                    exclusive=True if i == 0 else False,
-                    activation=None)
-                if i == 0:
-                    x = x + tf.layers.dense(condition_feature, units,
-                                            activation=None, use_bias=False)
-                if i < len(hidden_layers)-1:
-                    x = activation(x)
-            if shift_only:
-                return x, None
-            x = tf.reshape(x, tf.concat([tf.shape(x)[:-1], [input_depth, 2]], axis=0))
-            shift, log_scale = tf.unstack(x, 2, axis=-1)
-            which_clip = (
-                tf.clip_by_value
-                if log_scale_clip_gradient else tfp.math.clip_by_value_preserve_gradient)
-            log_scale = which_clip(log_scale, log_scale_min_clip, log_scale_max_clip)
-            return shift, log_scale
+    def _fn(x):
+      """MADE parameterized via `masked_autoregressive_default_template`."""
+      # TODO(b/67594795): Better support of dynamic shape.
+      input_depth = x.get_shape().as_list()[-1]
+      if input_depth is None:
+        raise NotImplementedError(
+            "Rightmost dimension must be known prior to graph execution.")
+      input_shape = tf.shape(input=x)
+      output_units = (1 if shift_only else 2) * input_depth
+      for i, units in enumerate(hidden_layers+[output_units]):
+        x = tfp.bijectors.masked_dense(
+            inputs=x,
+            units=units,
+            num_blocks=input_depth,
+            exclusive=True if i == 0 else False,
+            activation=None,
+            *args,  # pylint: disable=keyword-arg-before-vararg
+            **kwargs)
+        if i==0:
+          x = x + tf.layers.dense(condition_feature, units, use_bias=False)
+        if i < len(hidden_layers) and activation is not None:
+          x = activation(x)
+      if shift_only:
+        x = tf.reshape(x, shape=input_shape)
+        return x, None
+      x = tf.reshape(x, shape=tf.concat([input_shape, [2]], axis=0))
+      shift, log_scale = tf.unstack(x, num=2, axis=-1)
+      which_clip = (
+          tf.clip_by_value
+          if log_scale_clip_gradient else tfp.math.clip_by_value_preserve_gradient)
+      log_scale = which_clip(log_scale, log_scale_min_clip, log_scale_max_clip)
+      return shift, log_scale
 
-    return tf.make_template(name, _fn)
+    return tf.compat.v1.make_template(name, _fn)
 
 
 if __name__ == "__main__":
