@@ -49,7 +49,7 @@ class KnotEnv(object):
       actions = [(action_node, m) for m in moves]
       batch_actions.append(actions)
 
-    state = self.dynamic_inference.execute_batch(self.start_state, batch_actions, return_3d=True)
+    state = self.dynamic_inference.execute_batch(self.start_state, batch_actions, return_traj=False, reset_spring=True)
 
     reward = [{}]*self.parallel
     done = [True]*self.parallel
