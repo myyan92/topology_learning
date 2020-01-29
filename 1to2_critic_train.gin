@@ -1,0 +1,26 @@
+
+load_random_state.file_pattern = './1loop_states/*.txt'
+
+KnotEnv.gen_state_func = @load_random_state
+KnotEnv.random_flip = True
+KnotEnv.random_SE2 = True
+
+Runner.topo_action_func = @get_random_action
+Runner.eval_save = False
+Runner.eval_render = False
+Runner.explore = True
+
+learn.reward_keys = ['move-cross_endpoint-over_sign-1']
+# 'move-cross_endpoint-over_sign-1',
+# 'move-cross_endpoint-under_sign-1',
+# 'move-R1_left-1_sign-1',
+# 'move-R2_left-1_over_before_under-1',
+# 'move-R2_left-1_diff'
+
+learn.pretrain_buffers = ['./move-cross_endpoint-over_sign-1_critic_buffer_state.npz']
+learn.save_dir = './1to2-cross-endpointover-sign1-randstate_mC5'
+
+
+
+
+
