@@ -45,7 +45,7 @@ class Model:
             self.feature_whole_0 = tf.layers.dense(self.feature_whole_0, 512, activation=None, use_bias=False)
 
             prev_over, prev_under, prev_whole = self.feature_over_0, self.feature_under_0, self.feature_whole_0
-            for layer_idx in range(16):
+            for layer_idx in range(8):
                 with tf.variable_scope("attention_%d" % layer_idx):
                     with tf.variable_scope("attention_whole_to_over"):
                         whole_to_over  = attention(prev_over, prev_whole, self.mask_over, self.mask_whole,
@@ -196,6 +196,55 @@ class Model:
         feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
         pred, = sess.run([self.state_value], feed_dict=feed_dict)
         return pred
+
+    def predict_single_action(self, sess, obs, over_seg_dict, under_seg_dict,
+                              init_action_mean=None, init_action_cov=None,
+                              iterations=1, q_threshold=0.8):
+        CEM_population = 256
+        elite_percentage = 0.2
+        feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
+        state_feature = sess.run(self.state_fc, feed_dict=feed_dict)
+        mean, cov = init_action_mean, init_action_cov
+        for iter in range(iterations):
+            action_samples = np.random.multivariate_normal(mean, cov,
+                                                           size=CEM_population)
+            feed_dict = {self.state_fc:np.tile(state_feature, (CEM_population, 1)),
+                         self.action:action_samples}
+            qs = sess.run(self.q_value, feed_dict=feed_dict)
+            idx = np.argsort(qs[:,0])
+            if q_threshold is not None and np.amax(qs) > q_threshold:
+                return action_samples[idx[-1]]
+            idx = idx[-int(elite_percentage*CEM_population):]
+            action_samples = action_samples[idx]
+            mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
+        return action_samples[-1]
+
+    def predict_batch_action(self, sess, obs, over_seg_dict, under_seg_dict,
+                              init_action_mean=None, init_action_cov=None,
+                              iterations=1, q_threshold=0.8):
+        CEM_population = 256
+        elite_percentage = 0.2
+        feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
+        state_feature = sess.run(self.state_fc, feed_dict=feed_dict)
+        actions = []
+        for feat, mean, cov in zip(state_feature, init_action_mean, init_action_cov):
+            for iter in range(iterations):
+                action_samples = np.random.multivariate_normal(mean, cov,
+                                                               size=CEM_population)
+                feed_dict = {self.state_fc:np.tile(feat, (CEM_population, 1)),
+                             self.action:action_samples}
+                qs = sess.run(self.q_value, feed_dict=feed_dict)
+                idx = np.argsort(qs[:,0])
+                max_q = 1 / (1 + np.exp(-np.amax(qs)))
+                if q_threshold is not None and max_q > q_threshold:
+                    actions.append(action_samples[idx[-1]])
+                    break
+                idx = idx[-int(elite_percentage*CEM_population):]
+                action_samples = action_samples[idx]
+                mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
+            if q_threshold is None or max_q < q_threshold:
+                actions.append(action_samples[-1])
+        return actions
 
     def get_variables(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)

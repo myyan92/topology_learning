@@ -244,7 +244,7 @@ class Model:
                 action_samples = action_samples[idx]
                 mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
             if q_threshold is None or max_q < q_threshold:
-                actions.append(action_samples[idx[-1]])
+                actions.append(action_samples[-1])
         return actions
 
     def get_variables(self):

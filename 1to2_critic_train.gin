@@ -1,5 +1,5 @@
 
-load_random_state.file_pattern = './1loop_states/*.txt'
+load_random_state.file_pattern = './1loop_states_new/*.txt'
 
 KnotEnv.gen_state_func = @load_random_state
 KnotEnv.random_flip = True
