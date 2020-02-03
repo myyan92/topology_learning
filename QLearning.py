@@ -10,7 +10,7 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention_C3 import Model as Model_v3
+from model_GRU_C3 import Model as Model_v3
 from model_GRU_attention_C5 import Model as Model_v5
 from model_stats import ModelStats
 import matplotlib.pyplot as plt
@@ -52,6 +52,10 @@ class A2C():
                 # make up random bad samples.
                 fake_actions = np.random.uniform(low=np.array([0.0,-0.5,-0.5,-0.5,-0.5,0.02]),
                                                  high=np.array([1.0,0.5,0.5,0.5,0.5,0.2]), size=(self.train_batch_size//2, 6))
+                # negative mining
+                mining_actions = self.model_dict[key].predict_batch_action(self.sess, obs, over_seg_dict, under_seg_dict)
+                # mixing
+                fake_actions[0::2] = mining_actions[0::2]
                 obs = np.concatenate([obs,obs], axis=0)
                 actions = np.concatenate([actions, fake_actions], axis=0)
                 over_seg_dict = {key:np.concatenate([val, val], axis=0) for key,val in over_seg_dict.items()}
@@ -78,6 +82,8 @@ def learn(
     log_interval=50,
     save_dir='./test'):
 
+    if model_type=='Model_v3':
+        models = [Model_v3(key) for key in reward_keys]
     if model_type=='Model_v5':
         models = [Model_v5(key) for key in reward_keys]
 
@@ -93,10 +99,10 @@ def learn(
 
     # pretrain
     a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=0.05, save_dir=save_dir)
-    for model in models:
-        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC5/models/model-move-cross_endpoint-over_sign-1-5750')
-#    a2c.update()
-
+#    for model in models:
+#        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC6_QT/models/model-move-cross_endpoint-over_sign-1-42000')
+#        a2c.steps_dict[model.scope]=42000
+    a2c.update()
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
 
     def signal_handler(sig, frame):
