@@ -7,7 +7,7 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention_5 import Model
+from model_GRU_C3 import Model
 from model_stats import ModelStats
 import gin
 

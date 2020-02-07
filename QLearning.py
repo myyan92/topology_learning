@@ -10,7 +10,7 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention_C3 import Model as Model_v3
+from model_GRU_C3 import Model as Model_v3
 from model_GRU_attention_C5 import Model as Model_v5
 from model_stats import ModelStats
 import matplotlib.pyplot as plt
@@ -78,6 +78,8 @@ def learn(
     log_interval=50,
     save_dir='./test'):
 
+    if model_type=='Model_v3':
+        models = [Model_v3(key) for key in reward_keys]
     if model_type=='Model_v5':
         models = [Model_v5(key) for key in reward_keys]
 
@@ -92,10 +94,10 @@ def learn(
     model_stats = [ModelStats(model_name=key) for key in reward_keys]
 
     # pretrain
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=0.05, save_dir=save_dir)
-    for model in models:
-        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC5/models/model-move-cross_endpoint-over_sign-1-5750')
-#    a2c.update()
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=0.2, save_dir=save_dir)
+#    for model in models:
+#        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC3_debug/models/model-move-cross_endpoint-over_sign-1-2500')
+    a2c.update()
 
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
 
