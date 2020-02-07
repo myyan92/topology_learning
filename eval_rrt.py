@@ -6,6 +6,8 @@ import pdb
 from povray_render.sample_spline import sample_b_spline, sample_equdistance
 from dynamics_inference.dynamic_models import physbam_3d
 from topology.state_2_topology import state2topology
+from model_GRU_attention_3 import Model as Model_Actor
+from model_GRU_C3 import Model as Model_Critic
 
 class RRT(object):
     def __init__(self, x_init, topology_path, action_sampling_funcs, max_samples, parallel_sim):
@@ -69,8 +71,13 @@ class RRT(object):
             return None
         if child_index < parent_index:
             return None
+        intersections = [it[0] for it in intersections] + [it[1] for it in intersections]
+        intersections = np.array([0] + sorted(intersections) + [64])
+        seglength = intersections[1:]-intersections[:-1]
+#        if np.amin(seglength) == 0:
+#            return None # not a promissing state for next action
         print("Achieving ", child_index)
-        np.savetxt('%d.txt'%(self.samples_taken), child)
+#        np.savetxt('%d.txt'%(self.samples_taken), child)
         child_priority = parent_priority * 2 / (2**(child_index-parent_index))
         return child_priority
 
@@ -150,27 +157,54 @@ if __name__ == "__main__":
             intra_op_parallelism_threads=16)
         tf_config.gpu_options.allow_growth=True
         sess = tf.Session(config=tf_config)
+
+        def load_change_scope(model, load_path, new_scope, old_scope):
+            vars_to_load = model.get_trainable_variables()
+            reader = tf.train.load_checkpoint(load_path)
+            for var in vars_to_load:
+                new_name = var.name
+                old_name = new_name.replace(new_scope, old_scope)
+                if old_name.endswith(':0'):
+                    old_name = old_name[:-2]
+                tensor = reader.get_tensor(old_name)
+                sess.run(tf.assign(var, tensor))
+
         intended_action = {'move':'R1', 'idx':0, 'left':1, 'sign':1}
-        model = Model('move-R1_left-1_sign-1')
-        model.build()
-        model.load(sess, '0to1-moves-randstate/models/model-move-R1_left-1_sign-1-3400')
-        action_sampling_funcs = [model_sampler(sess, model, intended_action)]
+        actor_model = Model_Actor('move-R1_left-1_sign-1_actor')
+        actor_model.build()
+        load_change_scope(actor_model, '0to1-moves-randstate-m3/models/model-move-R1_left-1_sign-1-630',
+                          'move-R1_left-1_sign-1_actor', 'move-R1_left-1_sign-1')
+        critic_model = Model_Critic('move-R1_left-1_sign-1_critic')
+        critic_model.build()
+        load_change_scope(critic_model, '0to1-moves-randstate_mC3/models/model-move-R1_left-1_sign-1-3400',
+                          'move-R1_left-1_sign-1_critic', 'move-R1_left-1_sign-1')
+        action_sampling_funcs = [model_sampler(sess, actor_model, critic_model, intended_action)]
 
         intended_action = {'move':'cross', 'over_idx':0, 'under_idx':1, 'sign':1}
-        model = Model('move-cross_endpoint-over_sign-1')
-        model.build()
-        model.load(sess, '1to2-move-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-49000')
-        action_sampling_funcs.append(model_sampler(sess, model, intended_action))
+        actor_model = Model_Actor('move-cross_endpoint-over_sign-1_actor')
+        actor_model.build()
+        load_change_scope(actor_model, '1to2-cross-endpointover-sign1-randstate-m3/models/model-move-cross_endpoint-over_sign-1-6700',
+                          'move-cross_endpoint-over_sign-1_actor', 'move-cross_endpoint-over_sign-1')
+        critic_model = Model_Critic('move-cross_endpoint-over_sign-1_critic')
+        critic_model.build()
+        load_change_scope(critic_model, '1to2-cross-endpointover-sign1-randstate_mC3_0on1/models/model-move-cross_endpoint-over_sign-1-44450',
+                          'move-cross_endpoint-over_sign-1_critic', 'move-cross_endpoint-over_sign-1')
+        action_sampling_funcs.append(model_sampler(sess, actor_model, critic_model, intended_action))
 
         intended_action = {'move':'cross', 'over_idx':2, 'under_idx':0, 'sign':1}
-        model = Model('move-cross_endpoint-under_sign-1')
-        model.build()
-        model.load(sess, '2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-1600')
-        action_sampling_funcs.append(model_sampler(sess, model, intended_action))
+#        actor_model = Model_Actor('move-cross_endpoint-under_sign-1_actor')
+#        actor_model.build()
+#        load_change_scope(actor_model, '2to3-cross-endpointunder-sign1-randstate-m3/models/model-move-cross_endpoint-under_sign-1-1600')
+#                          'move-cross_endpoint-under_sign-1_actor', 'move-cross_endpoint-under_sign-1')
+        critic_model = Model_Critic('move-cross_endpoint-under_sign-1_critic')
+        critic_model.build()
+        load_change_scope(critic_model, '2to3-cross-endpointunder-sign1-randstate_mC3_2on0/models/model-move-cross_endpoint-under_sign-1-108000',
+                          'move-cross_endpoint-under_sign-1_critic', 'move-cross_endpoint-under_sign-1')
+        action_sampling_funcs.append(model_sampler(sess, None, critic_model, intended_action))
 
     rrt_search = RRT(init_state, topology_path, max_samples = 200000,
                      action_sampling_funcs = action_sampling_funcs,
-                     parallel_sim=64)
+                     parallel_sim=4)
     trajectory = rrt_search.rrt_search()
     if trajectory is not None:
         print('found a solution after %d samples.' % (rrt_search.samples_taken))
