@@ -7,7 +7,7 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention_5 import Model
+from model_GRU_C3 import Model
 from model_stats import ModelStats
 import gin
 
@@ -46,11 +46,11 @@ def eval(
         runner.run(sess)
         stat_string = model_stat.stat()
         print(stat_string)
-
+        print(model_stat.reward[:model_stat.num_in_buffer])
 
 if __name__ == "__main__":
 
     gin_config_file = sys.argv[1]
     gin.parse_config_file(gin_config_file)
-    env = KnotEnv(parallel=64)
+    env = KnotEnv(parallel=8)
     eval(env)

@@ -18,6 +18,8 @@ class Model:
             self.under_seg_obs = tf.placeholder(dtype=tf.float32, shape=[None,None,3])
             self.under_seg_pos = tf.placeholder(dtype=tf.float32, shape=[None,None,1])
             self.under_seg_length = tf.placeholder(dtype=tf.int32, shape=[None,])
+            self.action = tf.placeholder(dtype=tf.float32, shape=[None, action_dim])
+
 
             cell = tf.nn.rnn_cell.GRUCell(256, activation=tf.nn.tanh, name='gru_cell_whole')
             # TODO maybe share cell weights?
@@ -103,48 +105,24 @@ class Model:
             self.feature_whole_4 = tf.concat([self.feature_whole_3, self.over_to_whole, self.under_to_whole], axis=2)
             self.feature_whole_4 = tf.contrib.layers.layer_norm(self.feature_whole_4, begin_norm_axis=-1)
 
-
-            # general action GMM
-            fc1 = tf.layers.dense(self.feature_whole_4, 512, name='final_fc1', activation=tf.nn.relu)
-            fc1 = tf.contrib.layers.layer_norm(fc1, begin_norm_axis=-1)
-            fc2 = tf.layers.dense(fc1, 256, name='final_fc2', activation=tf.nn.relu)
+            fc1_a = tf.layers.dense(self.action, 512, name='fc1_a', activation=tf.nn.relu)
+            fc1_a = tf.contrib.layers.layer_norm(fc1_a, begin_norm_axis=-1)
+            self.state_fc = tf.reduce_max(self.feature_whole_4, axis=-2)
+            fc1 = tf.concat([self.state_fc, fc1_a], axis=-1)
+            fc2 = tf.layers.dense(fc1, 512, name='fc2', activation=tf.nn.relu)
             fc2 = tf.contrib.layers.layer_norm(fc2, begin_norm_axis=-1)
-            fc3 = tf.layers.dense(fc2, 1, name='final_pick_logit', activation=None)
-            self.pick_logits = tf.maximum(fc3, -200)
-
-            self.categorical = tfp.distributions.Categorical(logits=tf.squeeze(self.pick_logits, axis=-1))
-            sample_node = self.categorical.sample()
-            self.sample_node = tf.expand_dims(sample_node, -1) # to use gather
-            self.ML_node = tf.argmax(self.pick_logits, axis=-2) # maximum likelyhood
-
-            self.pick_point_input = tf.placeholder(dtype=tf.int32, shape=[None,1])
-
-            self.action_feature = tf.layers.dense(fc1, 256, name='action_feature', activation=tf.nn.relu)
-            pick_point_action_feature = tf.gather(self.action_feature, self.pick_point_input, batch_dims=1, axis=1)
-            pick_point_action_feature = tf.squeeze(pick_point_action_feature, axis=1)
-            gaussian_mean_init = tf.constant_initializer([0.0,0.0,0.0,0.0,0.1])
-            self.gaussian_mean = self.dense(pick_point_action_feature, 'gaussian_mean', action_dim-1, activation=None,
-                                            scale=0.01, bias_init=gaussian_mean_init)
-            self.gaussian_std = self.dense(pick_point_action_feature, 'gaussian_std', action_dim-1, activation=tf.nn.softplus,
-                                            scale=0.01, bias_init=tf.constant_initializer(value=1.0))
-            self.gaussian = tfp.distributions.MultivariateNormalDiag(loc=self.gaussian_mean,
-                                                                     scale_diag = self.gaussian_std+0.001)
-
-            self.action_first = tf.gather(whole_pos, self.pick_point_input, batch_dims=1, axis=1)
-            self.action_first = tf.squeeze(self.action_first, axis=1)
-            self.sample_action_second = self.gaussian.sample()
-            self.sample_action = tf.concat([self.action_first, self.sample_action_second], axis=-1)
-            self.ML_action = tf.concat([self.action_first, self.gaussian_mean], axis=-1)
-
-            self.node_prob = self.categorical.prob(tf.squeeze(self.pick_point_input, axis=-1))
-            self.action_input = tf.placeholder(tf.float32, shape=self.gaussian_mean.shape)
-            self.action_prob = self.node_prob * self.gaussian.prob(self.action_input)
+            fc3 = tf.layers.dense(fc2, 512, name='fc3', activation=tf.nn.relu)
+            fc3 = tf.contrib.layers.layer_norm(fc3, begin_norm_axis=-1)
+            fc4 = tf.layers.dense(fc3, 512, name='fc4', activation=tf.nn.relu)
+            fc4 = tf.contrib.layers.layer_norm(fc4, begin_norm_axis=-1)
+            self.q_value = tf.layers.dense(fc4, 1, name='q_value', activation=None)
 
             # state value
-            state_value_feature = tf.reduce_sum(self.action_feature*tf.nn.softmax(self.pick_logits, axis=1), axis=1)
-            fc1 = self.dense(state_value_feature, 'vf_fc1', 256, activation=tf.nn.relu)
-            fc2 = self.dense(fc1, 'vf_fc2', 256, activation=tf.nn.relu)
-            self.state_value = self.dense(fc2, 'state_value', 1, activation=None)
+            fc1_v = tf.layers.dense(self.state_fc, 256, name='fc1_v', activation=tf.nn.relu)
+            fc1_v = tf.contrib.layers.layer_norm(fc1_v, begin_norm_axis=-1)
+            fc2_v = tf.layers.dense(fc1_v, 256, name='fc2_v', activation=tf.nn.relu)
+            fc2_v = tf.contrib.layers.layer_norm(fc2_v, begin_norm_axis=-1)
+            self.state_value = tf.layers.dense(fc2_v, 1, name='state_value', activation=None)
 
             self.saver = tf.train.Saver(var_list=self.get_trainable_variables(), max_to_keep=50)
 
@@ -198,53 +176,17 @@ class Model:
                      self.under_seg_length: under_seg_dict['length']}
         return feed_dict
 
-    def predict_single(self, sess, obs, over_seg_dict, under_seg_dict, explore=False):
+    def predict_single(self, sess, obs, over_seg_dict, under_seg_dict, action):
         feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
-        if explore:
-            node = sess.run(self.sample_node, feed_dict=feed_dict)
-            feed_dict[self.pick_point_input] = node
-            act, = sess.run([self.sample_action], feed_dict=feed_dict)
-        else:
-            node = sess.run(self.ML_node, feed_dict=feed_dict)
-            feed_dict[self.pick_point_input] = node
-            act, = sess.run([self.ML_action], feed_dict=feed_dict)
-        return act[0]
+        feed_dict[self.action] = action[None]
+        q, v = sess.run([self.q_value, self.state_value], feed_dict=feed_dict)
+        return q[0], v[0]
 
-    def predict_batch(self, sess, obs, over_seg_dict, under_seg_dict, explore=False):
+    def predict_batch(self, sess, obs, over_seg_dict, under_seg_dict, action):
         feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
-        if explore:
-            node = sess.run(self.sample_node, feed_dict=feed_dict)
-            feed_dict[self.pick_point_input] = node
-            act, = sess.run([self.sample_action], feed_dict=feed_dict)
-        else:
-            node = sess.run(self.ML_node, feed_dict=feed_dict)
-            feed_dict[self.pick_point_input] = node
-            act, = sess.run([self.ML_action], feed_dict=feed_dict)
-        return act
-
-    def predict_single_prob(self, sess, obs, over_seg_dict, under_seg_dict, action):
-        feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
-        node_index = int(actions[0]*63)
-        legal_actions = node_index <= 63 and node_index >= 0
-        if not legal_actions:
-            print("illegal actions")
-            pdb.set_trace()
-        feed_dict[self.pick_point_input] = [[node_index]]
-        feed_dict[self.action_input] = action[np.newaxis, 1:]
-        prob, = sess.run([self.action_prob], feed_dict=feed_dict)
-        return prob[0],
-
-    def predict_batch_prob(self, sess, obs, over_seg_dict, under_seg_dict, action):
-        feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
-        node_index = action[:,0:1] * 63
-        legal_actions = np.all(node_index <= 63.0) and np.all(node_index >= 0.0)
-        if not legal_actions:
-            print("illegal actions")
-            pdb.set_trace()
-        feed_dict[self.pick_point_input] = node_index.astype(np.int32)
-        feed_dict[self.action_input] = action[:,1:]
-        prob, = sess.run([self.action_prob], feed_dict=feed_dict)
-        return prob
+        feed_dict[self.action] = action
+        q, v = sess.run([self.q_value, self.state_value], feed_dict=feed_dict)
+        return q, v
 
     def predict_single_vf(self, sess, obs, over_seg_dict, under_seg_dict):
         feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
@@ -256,81 +198,107 @@ class Model:
         pred, = sess.run([self.state_value], feed_dict=feed_dict)
         return pred
 
+    def predict_single_action(self, sess, obs, over_seg_dict, under_seg_dict,
+                              init_action_mean=None, init_action_cov=None,
+                              iterations=1, q_threshold=0.8):
+        CEM_population = 256
+        elite_percentage = 0.2
+        feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
+        state_feature = sess.run(self.state_fc, feed_dict=feed_dict)
+        mean, cov = init_action_mean, init_action_cov
+        for iter in range(iterations):
+            action_samples = np.random.multivariate_normal(mean, cov,
+                                                           size=CEM_population)
+            feed_dict = {self.state_fc:np.tile(state_feature, (CEM_population, 1)),
+                         self.action:action_samples}
+            qs = sess.run(self.q_value, feed_dict=feed_dict)
+            idx = np.argsort(qs[:,0])
+            if q_threshold is not None and np.amax(qs) > q_threshold:
+                return action_samples[idx[-1]]
+            idx = idx[-int(elite_percentage*CEM_population):]
+            action_samples = action_samples[idx]
+            mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
+        return action_samples[-1]
+
+    def predict_batch_action(self, sess, obs, over_seg_dict, under_seg_dict,
+                              init_action_mean=None, init_action_cov=None,
+                              iterations=1, q_threshold=0.8):
+        CEM_population = 256
+        elite_percentage = 0.2
+        feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
+        state_feature = sess.run(self.state_fc, feed_dict=feed_dict)
+        actions = []
+        for feat, mean, cov in zip(state_feature, init_action_mean, init_action_cov):
+            for iter in range(iterations):
+                action_samples = np.random.multivariate_normal(mean, cov,
+                                                               size=CEM_population)
+                feed_dict = {self.state_fc:np.tile(feat, (CEM_population, 1)),
+                             self.action:action_samples}
+                qs = sess.run(self.q_value, feed_dict=feed_dict)
+                idx = np.argsort(qs[:,0])
+                max_q = 1 / (1 + np.exp(-np.amax(qs)))
+                if q_threshold is not None and max_q > q_threshold:
+                    actions.append(action_samples[idx[-1]])
+                    break
+                idx = idx[-int(elite_percentage*CEM_population):]
+                action_samples = action_samples[idx]
+                mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
+            if q_threshold is None or max_q < q_threshold:
+                actions.append(action_samples[-1])
+        return actions
+
     def get_variables(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.scope)
     def get_trainable_variables(self):
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope)
 
-    def setup_optimizer(self, learning_rate, ent_coef, vf_coef, max_grad_norm):
+    def setup_optimizer(self, learning_rate):
         with tf.variable_scope(self.scope):
 
-            self.train_node_input = tf.placeholder(tf.float32, [None,])
-            self.train_action_second = tf.placeholder(tf.float32, self.gaussian_mean.shape)
-            self.advantage = tf.placeholder(tf.float32, [None])
-            self.reward = tf.placeholder(tf.float32, [None])
-            self.prev_prob = tf.placeholder(tf.float32, [None])
+            self.T = 0.2 # 1/temperature
+            self.q_gt = tf.placeholder(tf.float32, [None,1])
+            self.action_logprob = tf.placeholder(tf.float32, [None,1])
 
-            # Policy loss
-            neglogpac = -self.categorical.log_prob(self.train_node_input) - self.gaussian.log_prob(self.train_action_second)
-            pac = self.categorical.prob(self.train_node_input) * self.gaussian.prob(self.train_action_second)
-            self.IS = pac / self.prev_prob
-            self.pg_loss = tf.reduce_mean(self.advantage * tf.stop_gradient(pac) / self.prev_prob * neglogpac)
-            # Entropy is used to improve exploration by limiting the premature convergence to suboptimal policy.
-            self.entropy = tf.reduce_mean(self.gaussian.entropy()+self.categorical.entropy())
             # Value loss
-            self.vf_loss = tf.reduce_mean((tf.squeeze(self.state_value) - self.reward)**2)
-            self.loss = self.pg_loss - self.entropy*ent_coef + self.vf_loss*vf_coef
+            self.eval_q_loss = tf.reduce_mean((self.q_gt-tf.sigmoid(self.q_value))**2)
+            self.q_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.q_gt, logits=self.q_value))
+            v_target = tf.stop_gradient(self.q_value) - self.T * self.action_logprob
+            self.v_loss = tf.reduce_mean((tf.squeeze(self.state_value) - v_target)**2)
 
-            params = self.get_trainable_variables()
-            grads = tf.gradients(self.loss, params)
-            if max_grad_norm is not None:
-                grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
-            grads = list(zip(grads, params))
             optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-            self.optimizer = optimizer.apply_gradients(grads)
+            self.q_optimizer = optimizer.minimize(self.q_loss)
+            self.v_optimizer = optimizer.minimize(self.v_loss)
 
-            tf.summary.scalar('loss', self.loss)
-            tf.summary.scalar('pg_loss', self.pg_loss)
-            tf.summary.scalar('vf_loss', self.vf_loss)
-            tf.summary.scalar('entropy', self.entropy)
+            tf.summary.scalar('q_loss', self.q_loss)
+            tf.summary.scalar('v_loss', self.v_loss)
             self.merged_summary = tf.summary.merge_all()
 
-    def fit(self, sess, obs, over_seg_dict, under_seg_dict, actions, advantages, rewards, prev_prob):
-        nodes = actions[:,0]
-        node_index = nodes*63
-        legal_actions = np.all(node_index <= 63.0) and np.all(node_index >= 0.0)
-        if not legal_actions:
-            print("illegal actions")
-            pdb.set_trace()
+    def fit_q(self, sess, obs, over_seg_dict, under_seg_dict, actions, q_targets):
         feed_dict= {self.input:obs,
-                    self.train_node_input:node_index.astype(np.int32),
-                    self.train_action_second:actions[:,1:],
-                    self.pick_point_input:node_index[:,np.newaxis].astype(np.int32),
-                    self.advantage:advantages,
-                    self.reward:rewards,
-                    self.prev_prob:prev_prob,
                     self.over_seg_obs: over_seg_dict['obs'],
                     self.over_seg_pos: over_seg_dict['pos'],
                     self.over_seg_length: over_seg_dict['length'],
                     self.under_seg_obs: under_seg_dict['obs'],
                     self.under_seg_pos: under_seg_dict['pos'],
-                    self.under_seg_length: under_seg_dict['length']
+                    self.under_seg_length: under_seg_dict['length'],
+                    self.action:actions,
+                    self.q_gt:q_targets
         }
-        loss, debug_softmax, debug_mean, debug_std, debug_IS = sess.run([self.loss, self.categorical.probs, self.gaussian_mean, self.gaussian_std, self.IS],
-                                                              feed_dict=feed_dict)
-        #print(debug_softmax[0])
-        #print(debug_std[0])
-        print(np.amax(debug_IS), np.amin(debug_IS))
-        valid_logits = debug_softmax.flatten()
-        valid_logits = valid_logits[valid_logits>-300]
-        if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)) or np.isnan(loss):
-            print("loss is nan")
-            pdb.set_trace()
-        elif np.mean(valid_logits) <= -190:
-            print("pick logits collapsing")
-            pdb.set_trace()
-        else:
-           sess.run(self.optimizer, feed_dict=feed_dict)
+        loss, _ = sess.run([self.eval_q_loss, self.q_optimizer], feed_dict=feed_dict)
+        return loss
+
+    def fit_v(self, sess, obs, over_seg_dict, under_seg_dict, actions, action_logprobs):
+        feed_dict= {self.input:obs,
+                    self.over_seg_obs: over_seg_dict['obs'],
+                    self.over_seg_pos: over_seg_dict['pos'],
+                    self.over_seg_length: over_seg_dict['length'],
+                    self.under_seg_obs: under_seg_dict['obs'],
+                    self.under_seg_pos: under_seg_dict['pos'],
+                    self.under_seg_length: under_seg_dict['length'],
+                    self.action:actions,
+                    self.action_logprob:action_logprobs
+        }
+        loss, _ = sess.run([self.v_loss, self.v_optimizer], feed_dict=feed_dict)
         return loss
 
     def save(self, sess, file_dir, step):
@@ -364,11 +332,14 @@ if __name__=="__main__":
     for i in range(4):
         under_seg[i,:64-intersect[1][i],:]=states[i,intersect[1][i]:64,:]
         under_pos[i,:64-intersect[1][i],0]=np.arange(intersect[1][i], 64)
-    action = model.predict_batch(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
-                                               under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length}, explore=True)
-    print(action.shape)
-    act_prob = model.predict_batch_prob(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
-                                               under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length}, action=action)
-    model.fit(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
-                            under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length},
-                            actions=action, advantages=np.ones(4,), rewards=np.ones(4,), prev_prob=act_prob)
+    actions = np.random.uniform(size=(4,6))
+    qs, vs = model.predict_batch(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
+                                               under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length}, action=actions)
+    print(qs.shape)
+    model.fit_q(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
+                              under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length},
+                              actions=actions, q_targets=qs)
+    model.fit_v(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
+                              under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length},
+                              actions=actions, action_logprobs=np.zeros((4,1)))
+

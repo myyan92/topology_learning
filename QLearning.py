@@ -10,12 +10,10 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_attention import Model as Model_v1
-from model_GRU_attention_2 import Model as Model_v2
-from model_GRU_attention_3 import Model as Model_v3
-from model_GRU_attention_4 import Model as Model_v4
-from model_GRU_attention_5 import Model as Model_v5
+from model_GRU_C3 import Model as Model_v3
+from model_GRU_attention_C5 import Model as Model_v5
 from model_stats import ModelStats
+import matplotlib.pyplot as plt
 import gin
 
 
@@ -47,16 +45,24 @@ class A2C():
     def update(self):
         for key in self.buffer_dict:
             while self.buffer_dict[key].has_atleast(self.replay_start+self.replay_grow*self.steps_dict[key]):
-                obs, actions, rewards, over_seg_dict, under_seg_dict, probs = self.buffer_dict[key].get(self.train_batch_size)
-                probs = np.ones_like(probs)*2000.0
+                obs, actions, rewards, over_seg_dict, under_seg_dict = self.buffer_dict[key].get(self.train_batch_size//2)
                 # add augmentation
                 obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
-
-#                state_values = self.model_dict[key].predict_batch_vf(self.sess, obs, over_seg_dict, under_seg_dict)
-#                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict,
-#                                         actions, rewards - state_values[:,0], rewards)
-                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards, probs)
+                # make up random bad samples.
+                fake_actions = np.random.uniform(low=np.array([0.0,-0.5,-0.5,-0.5,-0.5,0.02]),
+                                                 high=np.array([1.0,0.5,0.5,0.5,0.5,0.2]), size=(self.train_batch_size//2, 6))
+                # negative mining
+                mining_actions = self.model_dict[key].predict_batch_action(self.sess, obs, over_seg_dict, under_seg_dict)
+                # mixing
+                fake_actions[0::2] = mining_actions[0::2]
+                obs = np.concatenate([obs,obs], axis=0)
+                actions = np.concatenate([actions, fake_actions], axis=0)
+                over_seg_dict = {key:np.concatenate([val, val], axis=0) for key,val in over_seg_dict.items()}
+                under_seg_dict = {key:np.concatenate([val, val], axis=0) for key,val in under_seg_dict.items()}
+                rewards = np.concatenate([rewards, np.zeros(len(fake_actions))], axis=0)
+                q_loss = self.model_dict[key].fit_q(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards[:,np.newaxis])
+                print(q_loss)
                 self.steps_dict[key] += 1
                 if (self.steps_dict[key] % self.log_interval == 0):
                     self.model_dict[key].save(self.sess, os.path.join(self.save_dir, 'models', 'model-%s'%(key)) , step=self.steps_dict[key])
@@ -70,47 +76,33 @@ def learn(
     model_type,
     pretrain_buffers,
     total_timesteps=int(80e6),
-    train_batch_size=256,
-    vf_coef=0.0,
-    ent_coef=0.0,
-    max_grad_norm=2000.0,
-    lr=1e-4,
+    train_batch_size=128,
     gamma=0.99,
-    log_interval=10,
+    lr=1e-4,
+    log_interval=50,
     save_dir='./test'):
 
-    if model_type=='Model_v1':
-        models = [Model_v1(key) for key in reward_keys]
-    if model_type=='Model_v2':
-        models = [Model_v2(key) for key in reward_keys]
     if model_type=='Model_v3':
         models = [Model_v3(key) for key in reward_keys]
-    if model_type=='Model_v4':
-        models = [Model_v4(key) for key in reward_keys]
     if model_type=='Model_v5':
         models = [Model_v5(key) for key in reward_keys]
 
     for model in models:
         model.build()
-        model.setup_optimizer(learning_rate=lr, ent_coef=ent_coef, vf_coef=vf_coef, max_grad_norm=max_grad_norm)
+        model.setup_optimizer(learning_rate=lr)
 
-    buffers = [Buffer(reward_key=key, size=50000) for key in reward_keys]
+    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys]
     for buffer, init_buffer in zip(buffers, pretrain_buffers):
         buffer.load(init_buffer)
 
     model_stats = [ModelStats(model_name=key) for key in reward_keys]
 
     # pretrain
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=1, save_dir=save_dir)
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=0.05, save_dir=save_dir)
+#    for model in models:
+#        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC6_QT/models/model-move-cross_endpoint-over_sign-1-42000')
+#        a2c.steps_dict[model.scope]=42000
     a2c.update()
-
-#    buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys] # re-init buffers
-#    a2c.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
-#    a2c.steps_dict = {key:0 for key in reward_keys}
-    for buffer in buffers:
-        buffer.filter_success=False
-        buffer.rewards = np.empty([buffer.size], dtype=np.float32)
-        buffer.rewards[:buffer.num_in_buffer]=1.0
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
 
     def signal_handler(sig, frame):
