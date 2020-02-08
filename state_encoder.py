@@ -10,7 +10,7 @@ def state_2_buffer(ob, reward):
     num_segs = len(intersections) * 2 + 1
     intersections = [i[0] for i in intersections] + [i[1] for i in intersections]
     intersections.sort()
-    intersections = [0] + intersections + [64]
+    intersections = [0] + [it+1 for it in intersections] + [64]
     over_idx = reward.get('over_idx', reward.get('idx'))
     over_seg_range = np.array(intersections[over_idx:over_idx+2])
     under_idx =reward.get('under_idx', reward.get('idx'))

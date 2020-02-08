@@ -1,11 +1,14 @@
 import random
 import numpy as np
-import heapq
-from heaptree import Tree
+import functools
+from tree import Tree
 import pdb
 from povray_render.sample_spline import sample_b_spline, sample_equdistance
 from dynamics_inference.dynamic_models import physbam_3d
 from topology.state_2_topology import state2topology
+from model_GRU_attention_3 import Model as Model_Actor
+from model_GRU_C3 import Model as Model_Critic
+import heuristic as heuristic
 
 class RRT(object):
     def __init__(self, x_init, topology_path, action_sampling_funcs, max_samples, parallel_sim):
@@ -24,15 +27,14 @@ class RRT(object):
         self.topology_path = topology_path
         self.action_sampling_funcs = action_sampling_funcs
         self.tree = Tree()
-        self.mental_dynamics = physbam_3d(physbam_args=' -friction 0.13688 -stiffen_linear 0.23208 -stiffen_bending 0.64118 -self_friction 0.46488')
+        self.mental_dynamics = physbam_3d(physbam_args=' -friction 0.13688 -stiffen_linear 0.23208 -stiffen_bending 0.64118 -self_friction 0.46488') # -gravity 0.0 -convergence_tol 1e-3')
 
     def select_node(self, tree):
-        priority, id, node = tree.V[0]
-        try:
-            heapq.heapreplace(tree.V, (priority*1.005, id, node))
-        except:
-            pass
-        return (priority, id, node)
+        prob = np.array(tree.V_priority) * 2
+        prob = np.exp(prob)
+        prob = prob / np.sum(prob)
+        idx = np.random.choice(len(tree.V_priority), p=prob)
+        return (tree.V_priority[idx], idx, tree.V_data[idx])
 
     def sample_branch(self, parent):
         parent_state = np.array(parent).reshape((128,3))
@@ -54,7 +56,12 @@ class RRT(object):
         traj_height = np.minimum(traj_height, height)
         traj = np.concatenate([traj, traj_height[:,np.newaxis]], axis=-1)
         moves = traj[1:]-traj[:-1]
-        actions = [(action_node, m) for m in moves]
+        actions = [(action_node,m) for m in moves]
+
+#        action_node = 0
+#        move = np.random.normal(size=3)
+#        move = move / np.linalg.norm(move) * 0.05
+#        actions = [(action_node, move)]
         return actions
 
     def score_priority(self, parent_priority, parent, child):
@@ -69,9 +76,14 @@ class RRT(object):
             return None
         if child_index < parent_index:
             return None
+        intersections = [it[0] for it in intersections] + [it[1] for it in intersections]
+        intersections = np.array([0] + sorted(intersections) + [64])
+        seglength = intersections[1:]-intersections[:-1]
+#        if np.amin(seglength) == 0:
+#            return None # not a promissing state for next action
         print("Achieving ", child_index)
-        np.savetxt('%d.txt'%(self.samples_taken), child)
-        child_priority = parent_priority * 2 / (2**(child_index-parent_index))
+#        np.savetxt('%d.txt'%(self.samples_taken), child)
+        child_priority = parent_priority * (2**(child_index-parent_index))
         return child_priority
 
     def is_solution(self, node):
@@ -95,7 +107,7 @@ class RRT(object):
             parents = [self.select_node(self.tree) for _ in range(self.parallel)]
             trajs = [self.sample_branch(parent[2]) for parent in parents]
             parent_states = [parent[2] for parent in parents]
-            child_states = self.mental_dynamics.execute_batch(parent_states, trajs, return_traj=False, reset_spring=True)
+            child_states = self.mental_dynamics.execute_batch(parent_states, trajs, return_traj=False, reset_spring=(self.samples_taken==0))
             parent_obs = [0.5*(ps[:64]+ps[64:]) if ps is not None else None for ps in parent_states]
             child_obs = [0.5*(ps[:64]+ps[64:]) if ps is not None else None for ps in child_states]
             priorities = [self.score_priority(parent_node[0], parent, child) for parent_node, parent, child in zip(parents, parent_obs, child_obs)]
@@ -104,8 +116,7 @@ class RRT(object):
                     self.samples_taken += 1
                     self.tree.add_leaf(parent, (priority, self.samples_taken, child_st), traj)
                     if self.is_solution(child_ob):
-                        waypoints, actions = self.tree.reconstruct_path(child_st)
-                        waypoints = [np.array(w).reshape((128,3)) for w in waypoints]
+                        waypoints, actions = self.tree.reconstruct_path((priority, self.samples_taken, child_st))
                         return waypoints, actions
         print("Cannot find solution!")
         return None
@@ -126,6 +137,7 @@ if __name__ == "__main__":
 
     init_state= np.zeros((64,3))
     init_state[:,0] = np.linspace(-0.5,0.5,64)
+#    init_state[:,2] = 0.2
     init_state = state_to_mesh(init_state)
     init_state = init_state.dot(np.array([[1,0,0],[0,0,1],[0,-1,0]]))
 
@@ -141,36 +153,77 @@ if __name__ == "__main__":
     if sampling_mode == 'random':
         action_sampling_funcs = [random_uniform_sampler(), random_uniform_sampler(), random_uniform_sampler()]
     elif sampling_mode == 'heuristic':
-        action_sampling_funcs = [random_gaussian_heuristic_sampler([0.9, 0.0, 0.2, -0.2, -0.2, 0.1], [0.05, 0.05, 0.05, 0.05, 0.05, 0.05]),
-                                 random_gaussian_heuristic_sampler([0.05, -0.2, 0.0, -0.05, -0.1, 0.05], [0.05, 0.05, 0.05, 0.05, 0.05, 0.03]),
-                                 random_gaussian_heuristic_sampler([0.6, -0.05, -0.1, -0.08, -0.15, 0.03],[0.05, 0.03, 0.03, 0.03, 0.03, 0.03])] # TO BE ADJUSTED
+#        action_sampling_funcs = [random_gaussian_heuristic_sampler([0.9, 0.0, 0.2, -0.2, -0.2, 0.1], [0.05, 0.05, 0.05, 0.05, 0.05, 0.05]),
+#                                 random_gaussian_heuristic_sampler([0.05, -0.2, 0.0, -0.05, -0.1, 0.05], [0.05, 0.05, 0.05, 0.05, 0.05, 0.03]),
+#                                 random_gaussian_heuristic_sampler([0.6, -0.05, -0.1, -0.08, -0.15, 0.03],[0.05, 0.03, 0.03, 0.03, 0.03, 0.03])] # TO BE ADJUSTED
+        action_sampling_funcs = [random_gaussian_heuristic_sampler([0.9, 0.0, 0.2, -0.2, -0.2, 0.1], [0.05, 0.05, 0.05, 0.05, 0.05, 0.05])]
+        def interpolate_gaussian_heuristic_sampler(obs, anno_states, anno_actions):
+            heuristic_mean = heuristic.interpolate_heuristic(anno_states, anno_actions, obs[:,:2])
+            action_std = np.array([0.03,0.05,0.05,0.05,0.05,0.05])
+            return np.random.normal(loc=heuristic_mean, scale=action_std)
+
+        folder = '1loop_states/annotate_0on1'
+        anno_states, anno_actions = heuristic.load_heuristic(folder)
+        action_sampling_funcs.append(functools.partial(interpolate_gaussian_heuristic_sampler, anno_states=anno_states, anno_actions=anno_actions))
+
+        folder = '2intersect_states/annotate_2on0'
+        anno_states, anno_actions = heuristic.load_heuristic(folder)
+        action_sampling_funcs.append(functools.partial(interpolate_gaussian_heuristic_sampler, anno_states=anno_states, anno_actions=anno_actions))
+
     elif sampling_mode == 'model':
         tf_config = tf.ConfigProto(
             inter_op_parallelism_threads=16,
             intra_op_parallelism_threads=16)
         tf_config.gpu_options.allow_growth=True
         sess = tf.Session(config=tf_config)
+
+        def load_change_scope(model, load_path, new_scope, old_scope):
+            vars_to_load = model.get_trainable_variables()
+            reader = tf.train.load_checkpoint(load_path)
+            for var in vars_to_load:
+                new_name = var.name
+                old_name = new_name.replace(new_scope, old_scope)
+                if old_name.endswith(':0'):
+                    old_name = old_name[:-2]
+                tensor = reader.get_tensor(old_name)
+                sess.run(tf.assign(var, tensor))
+
         intended_action = {'move':'R1', 'idx':0, 'left':1, 'sign':1}
-        model = Model('move-R1_left-1_sign-1')
-        model.build()
-        model.load(sess, '0to1-moves-randstate/models/model-move-R1_left-1_sign-1-3400')
-        action_sampling_funcs = [model_sampler(sess, model, intended_action)]
+        actor_model = Model_Actor('move-R1_left-1_sign-1_actor')
+        actor_model.build()
+        load_change_scope(actor_model, '0to1-moves-randstate-m3/models/model-move-R1_left-1_sign-1-630',
+                          'move-R1_left-1_sign-1_actor', 'move-R1_left-1_sign-1')
+        critic_model = Model_Critic('move-R1_left-1_sign-1_critic')
+        critic_model.build()
+        load_change_scope(critic_model, '0to1-moves-randstate_mC3/models/model-move-R1_left-1_sign-1-3400',
+                          'move-R1_left-1_sign-1_critic', 'move-R1_left-1_sign-1')
+        action_sampling_funcs = [model_sampler(sess, actor_model, critic_model, intended_action)]
 
         intended_action = {'move':'cross', 'over_idx':0, 'under_idx':1, 'sign':1}
-        model = Model('move-cross_endpoint-over_sign-1')
-        model.build()
-        model.load(sess, '1to2-move-endpointover-sign1-randstate/models/model-move-cross_endpoint-over_sign-1-49000')
-        action_sampling_funcs.append(model_sampler(sess, model, intended_action))
+        actor_model = Model_Actor('move-cross_endpoint-over_sign-1_actor')
+        actor_model.build()
+        load_change_scope(actor_model, '1to2-cross-endpointover-sign1-randstate-m3/models/model-move-cross_endpoint-over_sign-1-6700',
+                          'move-cross_endpoint-over_sign-1_actor', 'move-cross_endpoint-over_sign-1')
+        critic_model = Model_Critic('move-cross_endpoint-over_sign-1_critic')
+        critic_model.build()
+        load_change_scope(critic_model, '1to2-cross-endpointover-sign1-randstate_mC3_0on1/models/model-move-cross_endpoint-over_sign-1-44450',
+                          'move-cross_endpoint-over_sign-1_critic', 'move-cross_endpoint-over_sign-1')
+        action_sampling_funcs.append(model_sampler(sess, actor_model, critic_model, intended_action))
 
         intended_action = {'move':'cross', 'over_idx':2, 'under_idx':0, 'sign':1}
-        model = Model('move-cross_endpoint-under_sign-1')
-        model.build()
-        model.load(sess, '2to3-move-endpointunder-sign1-randstate/models/model-move-cross_endpoint-under_sign-1-1600')
-        action_sampling_funcs.append(model_sampler(sess, model, intended_action))
+#        actor_model = Model_Actor('move-cross_endpoint-under_sign-1_actor')
+#        actor_model.build()
+#        load_change_scope(actor_model, '2to3-cross-endpointunder-sign1-randstate-m3/models/model-move-cross_endpoint-under_sign-1-1600')
+#                          'move-cross_endpoint-under_sign-1_actor', 'move-cross_endpoint-under_sign-1')
+        critic_model = Model_Critic('move-cross_endpoint-under_sign-1_critic')
+        critic_model.build()
+        load_change_scope(critic_model, '2to3-cross-endpointunder-sign1-randstate_mC3_2on0/models/model-move-cross_endpoint-under_sign-1-108000',
+                          'move-cross_endpoint-under_sign-1_critic', 'move-cross_endpoint-under_sign-1')
+        action_sampling_funcs.append(model_sampler(sess, None, critic_model, intended_action))
 
-    rrt_search = RRT(init_state, topology_path, max_samples = 200000,
+    rrt_search = RRT(init_state, topology_path, max_samples = 2000000,
                      action_sampling_funcs = action_sampling_funcs,
-                     parallel_sim=64)
+                     parallel_sim=1)
     trajectory = rrt_search.rrt_search()
     if trajectory is not None:
         print('found a solution after %d samples.' % (rrt_search.samples_taken))

@@ -191,21 +191,19 @@ class Model:
         return pred
 
     def predict_single_action(self, sess, obs, over_seg_dict, under_seg_dict,
-                              init_action_mean=None, init_action_cov=None,
+                              init_action_samples,
                               iterations=1, q_threshold=0.8):
         CEM_population = 256
         elite_percentage = 0.2
         feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
         state_feature = sess.run(self.state_feature, feed_dict=feed_dict)
-        if init_action_mean is None:
-            init_action_mean = np.array([[0.5, 0.0, 0.0, 0.0, 0.0, 0.1]])
-        if init_action_cov is None:
-            init_action_cov = np.diag(np.array([0.3,0.3,0.3,0.3,0.3,0.05])**2)
 
-        mean, cov = init_action_mean, init_action_cov
         for iter in range(iterations):
-            action_samples = np.random.multivariate_normal(mean, cov,
-                                                           size=CEM_population)
+            if iter == 0:
+                action_samples = init_action_samples
+            else:
+                action_samples = np.random.multivariate_normal(mean, cov,
+                                                               size=CEM_population)
             action_node = (action_samples[:,0]*63).astype(np.int32)
             action_node = np.clip(action_node, 0, 63)
             convert_action_samples = np.concatenate([obs[action_node, :2], action_samples[:,1:]], axis=-1)
@@ -221,24 +219,19 @@ class Model:
         return action_samples[-1]
 
     def predict_batch_action(self, sess, obs, over_seg_dict, under_seg_dict,
-                              init_action_mean=None, init_action_cov=None,
+                              init_action_samples,
                               iterations=1, q_threshold=0.8):
         CEM_population = 256
         elite_percentage = 0.2
         feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
         state_feature = sess.run(self.state_feature, feed_dict=feed_dict)
-        if init_action_mean is None:
-            init_action_mean = np.array([[0.5, 0.0, 0.0, 0.0, 0.0, 0.1]])
-            init_action_mean = np.repeat(init_action_mean, len(obs), axis=0)
-        if init_action_cov is None:
-            init_action_cov = np.diag(np.array([0.3,0.3,0.3,0.3,0.3,0.05])**2)
-            init_action_cov = np.repeat(init_action_cov[np.newaxis,:,:], len(obs), axis=0)
 
         actions = []
-        for ob, feat, mean, cov in zip(obs, state_feature, init_action_mean, init_action_cov):
+        for ob, feat, action_samples in zip(obs, state_feature, init_action_samples):
             for iter in range(iterations):
-                action_samples = np.random.multivariate_normal(mean, cov,
-                                                               size=CEM_population)
+                if iter > 0:
+                    action_samples = np.random.multivariate_normal(mean, cov,
+                                                                   size=CEM_population)
                 action_node = (action_samples[:,0]*63).astype(np.int32)
                 action_node = np.clip(action_node, 0, 63)
                 convert_action_samples = np.concatenate([ob[action_node, :2], action_samples[:,1:]], axis=-1)
@@ -249,12 +242,14 @@ class Model:
                 max_q = 1 / (1 + np.exp(-np.amax(qs)))
                 if q_threshold is not None and max_q > q_threshold:
                     actions.append(action_samples[idx[-1]])
+                    print(max_q)
                     break
                 idx = idx[-int(elite_percentage*CEM_population):]
                 action_samples = action_samples[idx]
                 mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
             if q_threshold is None or max_q < q_threshold:
                 actions.append(action_samples[-1])
+                print(max_q)
         return actions
 
     def get_variables(self):
