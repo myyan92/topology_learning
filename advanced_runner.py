@@ -66,15 +66,16 @@ class Runner(object):
 #            sublist_trans_actions = model.predict_batch(sess, *model_inputs, explore=self.explore)
             init_action_mean = np.array([[0.5, 0.0, 0.0, 0.0, 0.0, 0.1]])
 #            init_action_mean = np.array([[0.02, 0.2, 0.0, -0.05, 0.0, 0.1]])
-            init_action_mean = np.tile(init_action_mean, (64,1))
+            init_action_mean = np.tile(init_action_mean, (len(self.obs),1))
             init_action_cov = np.diag(np.array([0.3,0.3,0.3,0.3,0.3,0.05])**2)
-            init_action_cov = np.tile(init_action_cov, (64,1,1))
+            init_action_cov = np.tile(init_action_cov, (len(self.obs),1,1))
 
 #            sublist_trans_actions = np.random.multivariate_normal(init_action_mean[0], init_action_cov[0], size=len(sublist_trans_obs))
             sublist_trans_actions = model.predict_batch_action(sess, *model_inputs,
                                         init_action_mean=init_action_mean, init_action_cov=init_action_cov,
                                         iterations = 10, q_threshold=None)
             sublist_trans_actions = np.clip(sublist_trans_actions, self.env.action_low, self.env.action_high)
+            print(sublist_trans_actions)
 #            sublist_trans_actions_prob = model.predict_batch_prob(sess, *model_inputs, action=sublist_trans_actions)
             idx = 0
             for i,k in enumerate(reward_keys):

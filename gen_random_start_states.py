@@ -2,6 +2,7 @@ import numpy as np
 import random
 import glob
 import gin
+from physbam_python.state_to_mesh import state_to_mesh
 #import matplotlib
 #matplotlib.use('agg')
 #import matplotlib.pyplot as plt
@@ -38,6 +39,8 @@ def gen_random_state():
   matrix = np.array([[np.cos(rotation), np.sin(rotation)],[-np.sin(rotation), np.cos(rotation)]])
   state = np.dot(state, matrix) * scaling + translation
   state = np.concatenate([state, np.zeros((64,1))], axis=-1)
+  state = state_to_mesh(state)
+  state = state.dot(np.array([[1,0,0],[0,0,1],[0,-1,0]]))
   return state
 
 @gin.configurable

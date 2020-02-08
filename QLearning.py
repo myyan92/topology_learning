@@ -52,6 +52,10 @@ class A2C():
                 # make up random bad samples.
                 fake_actions = np.random.uniform(low=np.array([0.0,-0.5,-0.5,-0.5,-0.5,0.02]),
                                                  high=np.array([1.0,0.5,0.5,0.5,0.5,0.2]), size=(self.train_batch_size//2, 6))
+                # negative mining
+                mining_actions = self.model_dict[key].predict_batch_action(self.sess, obs, over_seg_dict, under_seg_dict)
+                # mixing
+#                fake_actions[0::2] = mining_actions[0::2]
                 obs = np.concatenate([obs,obs], axis=0)
                 actions = np.concatenate([actions, fake_actions], axis=0)
                 over_seg_dict = {key:np.concatenate([val, val], axis=0) for key,val in over_seg_dict.items()}
@@ -97,8 +101,8 @@ def learn(
     a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=0.2, save_dir=save_dir)
 #    for model in models:
 #        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC3_debug/models/model-move-cross_endpoint-over_sign-1-2500')
+#        a2c.steps_dict[model.scope]=2500
     a2c.update()
-
     runner = Runner(env, models, model_stats, buffers, gamma=gamma)
 
     def signal_handler(sig, frame):
