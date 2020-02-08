@@ -74,9 +74,7 @@ class Runner(object):
                     init_action_cov = np.diag(np.array([0.3,0.3,0.3,0.3,0.3,0.05])**2)
                     sample_actions = np.random.multivariate_normal(init_action_mean, init_action_cov, size=(len(sublist_trans_obs), 256))
                 else:
-                    # slow method for now.
-                    sample_actions = [actor.predict_batch(sess, *model_inputs, explore=True) for _ in range(256)]
-                    sample_actions = np.array(sample_actions).transpose((1,0,2))
+                    sample_actions = actor.predict_batch(sess, *model_inputs, explore=True, num_samples=256)
                 sublist_trans_actions = critic.predict_batch_action(sess, *model_inputs,
                                              init_action_samples = sample_actions,
                                              iterations = 10, q_threshold=None)
