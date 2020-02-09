@@ -63,7 +63,7 @@ class Model:
             over_absolute_pos = self.over_seg_pos
             over_absolute_pos_cos = tf.sin(over_absolute_pos*3.1415)
             over_relative_pos = ((over_absolute_pos - over_absolute_pos[:,0:1,:]) * 63
-                                 / tf.reshape(tf.cast(self.over_seg_length, tf.float32)-1.0, [-1,1,1]))
+                                 / tf.reshape(tf.cast(self.over_seg_length, tf.float32)-0.999, [-1,1,1]))
             over_relative_pos_cos = tf.sin(over_relative_pos*3.1415)
             over_position_encoding = tf.concat([over_absolute_pos, over_absolute_pos_cos,
                                                over_relative_pos, over_relative_pos_cos], axis=-1)
@@ -71,7 +71,7 @@ class Model:
             under_absolute_pos = self.under_seg_pos
             under_absolute_pos_cos = tf.sin(under_absolute_pos*3.1415)
             under_relative_pos = ((under_absolute_pos - under_absolute_pos[:,0:1,:]) * 63
-                                   / tf.reshape(tf.cast(self.under_seg_length, tf.float32)-1.0, [-1,1,1]))
+                                   / tf.reshape(tf.cast(self.under_seg_length, tf.float32)-0.999, [-1,1,1]))
             under_relative_pos_cos = tf.sin(under_relative_pos*3.1415)
             under_position_encoding = tf.concat([under_absolute_pos, under_absolute_pos_cos,
                                                 under_relative_pos, under_relative_pos_cos], axis=-1)

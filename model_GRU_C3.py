@@ -133,7 +133,7 @@ class Model:
         for k in range(8):
             absolute_pos_sins.append( tf.sin(absolute_pos*k*3.1415) )
         relative_pos = ((absolute_pos - absolute_pos[:,0:1,:]) * 63
-                         / tf.reshape(tf.cast(lengths, tf.float32)-1.0, [-1,1,1]))
+                         / tf.reshape(tf.cast(lengths, tf.float32)-0.999, [-1,1,1])) # to prevent nan when lengths=1
         relative_pos_sins = []
         for k in range(8):
             relative_pos_sins.append( tf.sin(relative_pos*k*3.1415) )
@@ -242,14 +242,12 @@ class Model:
                 max_q = 1 / (1 + np.exp(-np.amax(qs)))
                 if q_threshold is not None and max_q > q_threshold:
                     actions.append(action_samples[idx[-1]])
-                    print(max_q)
                     break
                 idx = idx[-int(elite_percentage*CEM_population):]
                 action_samples = action_samples[idx]
                 mean, cov = np.mean(action_samples, axis=0), np.cov(action_samples, rowvar=False)
             if q_threshold is None or max_q < q_threshold:
                 actions.append(action_samples[-1])
-                print(max_q)
         return actions
 
     def get_variables(self):
