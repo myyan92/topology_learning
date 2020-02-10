@@ -53,7 +53,7 @@ class KnotEnv(object):
       actions = [(action_node, m) for m in moves]
       batch_actions.append(actions)
 
-    state = self.dynamic_inference.execute_batch(self.state, batch_actions, return_3d=True)
+    state = self.dynamic_inference.execute_batch(self.state, batch_actions, return_traj=False, reset_spring=True)
     self.steps = [s+1 for s in self.steps]
 
     reward = [{}]*self.parallel
@@ -72,15 +72,11 @@ class KnotEnv(object):
         obs.append(ob)
         end_abstract_state, end_intersections = state2topology(ob, update_edges=True, update_faces=False)
         intersect_points = [i[0] for i in end_intersections] + [i[1] for i in end_intersections]
-        if len(set(intersect_points)) != len(intersect_points):
-          done[i] = True # this is a bad topo state to continue
-          continue
         intersect_points.sort()
-        diff = np.array([0] + intersect_points + [63])
+        diff = np.array([0] + [it+1 for it in intersect_points] + [64])
         diff = diff[1:] - diff[:-1]
-        if np.any(diff < 5):
+        if np.any(diff < 2):
           done[i] = True # some segment too short to continue
-          continue
 
         paths = bfs_all_path(start_abstract_state, end_abstract_state, max_depth=1)
         if len(paths)==1 and len(paths[0][1])==1:  # there is only one possible topological action

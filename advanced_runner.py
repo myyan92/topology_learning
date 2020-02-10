@@ -31,7 +31,10 @@ class Runner(object):
         self.critic_model_dict = {model.scope.replace('_critic',''):model for model in critic_models}
         self.model_stats_dict = {model_stat.model_name:model_stat for model_stat in model_stats}
         self.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
-        self.obs = env.reset()
+        if hasattr(env, 'hard_reset'):
+            self.obs = env.hard_reset()
+        else:
+            self.obs = env.reset()
         self.topo_action_func = topo_action_func
         self.explore = explore
         self.eval_save = eval_save
@@ -92,13 +95,16 @@ class Runner(object):
         actions = np.array(actions)
 
         obs, rewards, dones, infos = self.env.step(actions)
-        for ob_u, ac_u, r, ia, ia_u, key in zip(trans_obs, trans_actions, rewards,
-                                                    intended_actions, trans_intended_actions, reward_keys):
+
+        for ob_u, ac_u, r, ia, ia_u, key, ob_end, tf in zip(trans_obs, trans_actions, rewards,
+                                                            intended_actions, trans_intended_actions, reward_keys,
+                                                            obs, transforms):
             stats = self.model_stats_dict[key]
             reward = 1.0 if hash_dict(r) == hash_dict(ia) else 0.0
             stats.put(reward)
             if key in self.buffer_dict:
-                self.buffer_dict[key].put(ob_u, ac_u, reward, ia_u)
+                ob_end_u = unifying_transform_decode(ob_end, None, None, tf)
+                self.buffer_dict[key].put(ob_u, ac_u, reward, ia_u, ob_end_u)
 
         if self.eval_render:
             self.env.render()

@@ -8,23 +8,26 @@ import numpy as np
 #matplotlib.use('agg')
 #import matplotlib.pyplot as plt
 from knot_env_multistage import KnotEnv
-from advanced_runner_multistage import Runner
+from advanced_runner import Runner
+from TD_target import TDTarget
 from advanced_buffer import Buffer
-from model_GRU_attention_2 import Model
+from model_GRU_attention import Model
 from model_stats import ModelStats
 from topology.representation import AbstractState
-from planner import Goalplanner
+from planner import GoalPlanner
 import gin
 
 
 class A2C():
     def __init__(self, models, model_stats, buffers, log_interval,
-                 train_batch_size, replay_start, replay_grow, save_dir):
+                 train_batch_size, replay_start, replay_grow, save_dir,
+                 TD_worker):
         self.model_dict = {model.scope:model for model in models}
         self.model_stat_dict = {model_stat.model_name:model_stat for model_stat in model_stats}
         self.steps_dict = {model.scope:0 for model in models}
         self.buffer_dict = {buffer.reward_key:buffer for buffer in buffers}
         assert set(self.model_dict.keys()) == set(self.buffer_dict.keys())
+        self.TD_worker = TD_worker
 
         self.log_interval = log_interval
         self.train_batch_size = train_batch_size
@@ -45,10 +48,12 @@ class A2C():
     def update(self):
         for key in self.buffer_dict:
             while self.buffer_dict[key].has_atleast(self.replay_start+self.replay_grow*self.steps_dict[key]):
-                obs, actions, rewards, over_seg_dict, under_seg_dict = self.buffer_dict[key].get(self.train_batch_size)
+                obs, actions, rewards, over_seg_dict, under_seg_dict, end_obs = self.buffer_dict[key].get(self.train_batch_size)
                 # add augmentation
-                obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
-                                                                   obs, actions, over_seg_dict, under_seg_dict)
+                obs, actions, over_seg_dict, under_seg_dict, end_obs = self.buffer_dict[key].augment(
+                                                                   obs, actions, over_seg_dict, under_seg_dict, end_obs)
+                state_values = self.TD_worker.run(self.sess, obs) # this is wrong but pretend
+                # reward = reward + 0.99*state_values
                 self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
                 self.steps_dict[key] += 1
                 #print(self.steps_dict[key])
@@ -79,16 +84,19 @@ def learn(
     buffers = [Buffer(reward_key=key, size=50000, filter_success=False) for key in reward_keys]
     model_stats = [ModelStats(model_name=key) for key in reward_keys]
 
-    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=1, save_dir=save_dir)
-    for model, snapshot in zip(models, pretrained_snapshots):
-        model.load(a2c.sess, snapshot)
 
-    #TODO imports
     goal = AbstractState()
     goal.Reide1(idx=0, left=1, sign=1)
     goal.cross(over_idx=0, under_idx=1,sign=1)
     goal.cross(over_idx=2, under_idx=0, sign=1)
-    planner = planner.GoalPlanner(goal, reward_keys)
+    planner = GoalPlanner(goal, reward_keys)
+    env = KnotEnv(parallel=8, max_step=5, planner_not_feasible_func=planner.not_feasible, planner_reached_goal_func=planner.reached_goal)
+    runner = Runner(env, models, [], model_stats, buffers, topo_action_func=planner.get_action, gamma=gamma)
+    TD_worker = TDTarget(models, topo_action_func=planner.get_action, planner_not_feasible_func=planner.not_feasible, planner_reached_goal_func=planner.reached_goal)
+
+    a2c = A2C(models, model_stats, buffers, log_interval, train_batch_size, replay_start=4, replay_grow=1, save_dir=save_dir, TD_worker=TD_worker)
+    for model, snapshot in zip(models, pretrained_snapshots):
+        model.load(a2c.sess, snapshot)
 
     def signal_handler(sig, frame):
         for buffer in buffers:

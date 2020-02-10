@@ -45,9 +45,9 @@ class A2C():
     def update(self):
         for key in self.buffer_dict:
             while self.buffer_dict[key].has_atleast(self.replay_start+self.replay_grow*self.steps_dict[key]):
-                obs, actions, rewards, over_seg_dict, under_seg_dict = self.buffer_dict[key].get(self.train_batch_size//2)
+                obs, actions, rewards, over_seg_dict, under_seg_dict, _ = self.buffer_dict[key].get(self.train_batch_size//2)
                 # add augmentation
-                obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
+                obs, actions, over_seg_dict, under_seg_dict, _ = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
                 # make up random bad samples.
                 fake_actions = np.random.uniform(low=np.array([0.0,-0.5,-0.5,-0.5,-0.5,0.02]),

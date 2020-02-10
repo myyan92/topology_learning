@@ -52,12 +52,13 @@ for folder in folders:
             intended_action = {'move':'cross', 'sign':1}
             intended_action['over_idx'] = int(folder[-4])
             intended_action['under_idx']= int(folder[-1])
-            for ob,ac,r in zip(obs, actions, rewards):
-                ob, ac, r, _ = unifying_transform_encode(ob, ac, r)
+            for ob,ac,r,ob_end in zip(obs, actions, rewards, end_obs):
+                ob, ac, r, t = unifying_transform_encode(ob, ac, r)
+                ob_end = unifying_transform_decode(ob_end, None, None, t)
                 if hash_dict(r) == hash_dict(intended_action):
-                    buffer.put(ob, ac, 1.0, intended_action)
+                    buffer.put(ob, ac, 1.0, intended_action, ob_end)
                 else:
-                    buffer.put(ob, ac, 0.0, intended_action)
+                    buffer.put(ob, ac, 0.0, intended_action, ob_end)
             print(buffer.num_in_buffer)
 
 buffer.dump()
