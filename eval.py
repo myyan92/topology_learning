@@ -7,7 +7,8 @@ import numpy as np
 from knot_env import KnotEnv
 from advanced_runner import Runner
 from advanced_buffer import Buffer
-from model_GRU_C3 import Model
+from model_GRU_attention_3 import Model as Model_Actor
+from model_GRU_C3 import Model as Model_Critic
 from model_stats import ModelStats
 import gin
 
@@ -15,11 +16,16 @@ import gin
 def eval(
     env,
     model_key,
+    actor=True, critic=True,
     eval_size=192,
-    load_path=None):
+    actor_load_path=None, critic_load_path=None):
 
-    model = Model(model_key)
-    model.build()
+    if actor:
+        actor_model = Model_Actor(model_key+'_actor')
+        actor_model.build()
+    if critic:
+        critic_model = Model_Critic(model_key+'_critic')
+        critic_model.build()
 
     tf_config = tf.ConfigProto(
         inter_op_parallelism_threads=16,
@@ -27,20 +33,34 @@ def eval(
     tf_config.gpu_options.allow_growth=True
     sess = tf.Session(config=tf_config)
     sess.run(tf.global_variables_initializer())
-    if load_path is not None:
-        model.load(sess, load_path)
 
-    # hack reduce gaussian std
-    #gaussian_tril = sess.run(model.gaussian_tril)
-    #sess.run(tf.assign(model.gaussian_tril, gaussian_tril/2.0))
-    #vars = model.get_trainable_variables()
-    #vars = [v for v in vars if 'gaussian_logstd' in v.name]
-    #vars = [v for v in vars if 'bias' in v.name]
-    #val = sess.run(vars[0])
-    #sess.run(tf.assign(vars[0], val-2.0))
+    if actor and actor_load_path is not None:
+        vars_to_load = actor_model.get_trainable_variables()
+        reader = tf.train.load_checkpoint(actor_load_path)
+        for var in vars_to_load:
+            new_name = var.name
+            old_name = new_name.replace(model_key+'_actor', model_key)
+            if old_name.endswith(':0'):
+                old_name = old_name[:-2]
+            tensor = reader.get_tensor(old_name)
+            sess.run(tf.assign(var, tensor))
+#        actor_model.load(sess, actor_load_path)
+    if critic and critic_load_path is not None:
+        vars_to_load = critic_model.get_trainable_variables()
+        reader = tf.train.load_checkpoint(critic_load_path)
+        for var in vars_to_load:
+            new_name = var.name
+            old_name = new_name.replace(model_key+'_critic', model_key)
+            if old_name.endswith(':0'):
+                old_name = old_name[:-2]
+            tensor = reader.get_tensor(old_name)
+            sess.run(tf.assign(var, tensor))
+#        critic_model.load(sess, critic_load_path)
 
     model_stat = ModelStats(model_name=model_key,size=eval_size)
-    runner = Runner(env, [model], [model_stat], [], gamma=0.99)
+    runner = Runner(env, actor_models=[actor_model] if actor else [],
+                         critic_models = [critic_model] if critic else [],
+                         model_stats = [model_stat], buffers = [], gamma=0.99)
 
     while model_stat.num_in_buffer < eval_size:
         runner.run(sess)

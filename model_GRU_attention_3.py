@@ -113,32 +113,28 @@ class Model:
             self.pick_logits = tf.maximum(fc3, -200)
 
             self.categorical = tfp.distributions.Categorical(logits=tf.squeeze(self.pick_logits, axis=-1))
-            sample_node = self.categorical.sample()
-            self.sample_node = tf.expand_dims(sample_node, -1) # to use gather
-            self.ML_node = tf.argmax(self.pick_logits, axis=-2) # maximum likelyhood
 
-            self.pick_point_input = tf.placeholder(dtype=tf.int32, shape=[None,1])
+            self.num_actions = tf.placeholder(dtype=tf.int32) # usually 1
+            sample_node = self.categorical.sample(self.num_actions)
+            self.sample_node = tf.transpose(sample_node) # Batch x Sample
+            self.ML_node = tf.argmax(self.pick_logits, axis=-2) # maximum likelyhood, B x 1
+
+            self.pick_point_input = tf.placeholder(dtype=tf.int32, shape=[None,None])
 
             self.action_feature = tf.layers.dense(fc1, 256, name='action_feature', activation=tf.nn.relu)
-            pick_point_action_feature = tf.gather(self.action_feature, self.pick_point_input, batch_dims=1, axis=1)
-            pick_point_action_feature = tf.squeeze(pick_point_action_feature, axis=1)
+            pick_point_action_feature = tf.gather(self.action_feature, self.pick_point_input, batch_dims=1, axis=1) # BxSxC
             gaussian_mean_init = tf.constant_initializer([0.0,0.0,0.0,0.0,0.1])
             self.gaussian_mean = self.dense(pick_point_action_feature, 'gaussian_mean', action_dim-1, activation=None,
                                             scale=0.01, bias_init=gaussian_mean_init)
             self.gaussian_std = self.dense(pick_point_action_feature, 'gaussian_std', action_dim-1, activation=tf.nn.softplus,
                                             scale=0.01, bias_init=tf.constant_initializer(value=1.0))
             self.gaussian = tfp.distributions.MultivariateNormalDiag(loc=self.gaussian_mean,
-                                                                     scale_diag = self.gaussian_std+0.001)
+                                                                     scale_diag = self.gaussian_std+0.001)  # batch shape = BxS
 
-            self.action_first = tf.gather(whole_pos, self.pick_point_input, batch_dims=1, axis=1)
-            self.action_first = tf.squeeze(self.action_first, axis=1)
-            self.sample_action_second = self.gaussian.sample()
+            self.action_first = tf.gather(whole_pos, self.pick_point_input, batch_dims=1, axis=1) # BxSx1
+            self.sample_action_second = self.gaussian.sample() # BxSx(action_dim-1)
             self.sample_action = tf.concat([self.action_first, self.sample_action_second], axis=-1)
             self.ML_action = tf.concat([self.action_first, self.gaussian_mean], axis=-1)
-
-            self.node_prob = self.categorical.prob(tf.squeeze(self.pick_point_input, axis=-1))
-            self.action_input = tf.placeholder(tf.float32, shape=self.gaussian_mean.shape)
-            self.action_prob = self.node_prob * self.gaussian.prob(self.action_input)
 
             # state value
             state_value_feature = tf.reduce_sum(self.action_feature*tf.nn.softmax(self.pick_logits, axis=1), axis=1)
@@ -169,7 +165,7 @@ class Model:
         for k in range(8):
             absolute_pos_sins.append( tf.sin(absolute_pos*k*3.1415) )
         relative_pos = ((absolute_pos - absolute_pos[:,0:1,:]) * 63
-                         / tf.reshape(tf.cast(lengths, tf.float32)-1.0, [-1,1,1]))
+                         / tf.reshape(tf.cast(lengths, tf.float32)-0.999, [-1,1,1])) # to prevent nan when lengths=1
         relative_pos_sins = []
         for k in range(8):
             relative_pos_sins.append( tf.sin(relative_pos*k*3.1415) )
@@ -198,8 +194,9 @@ class Model:
                      self.under_seg_length: under_seg_dict['length']}
         return feed_dict
 
-    def predict_single(self, sess, obs, over_seg_dict, under_seg_dict, explore=False):
+    def predict_single(self, sess, obs, over_seg_dict, under_seg_dict, explore=False, num_samples=1):
         feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
+        feed_dict[self.num_actions]=num_samples
         if explore:
             node = sess.run(self.sample_node, feed_dict=feed_dict)
             feed_dict[self.pick_point_input] = node
@@ -208,10 +205,13 @@ class Model:
             node = sess.run(self.ML_node, feed_dict=feed_dict)
             feed_dict[self.pick_point_input] = node
             act, = sess.run([self.ML_action], feed_dict=feed_dict)
+        if num_samples==1:
+            act = act[:,0]
         return act[0]
 
-    def predict_batch(self, sess, obs, over_seg_dict, under_seg_dict, explore=False):
+    def predict_batch(self, sess, obs, over_seg_dict, under_seg_dict, explore=False, num_samples=1):
         feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
+        feed_dict[self.num_actions]=num_samples
         if explore:
             node = sess.run(self.sample_node, feed_dict=feed_dict)
             feed_dict[self.pick_point_input] = node
@@ -220,31 +220,9 @@ class Model:
             node = sess.run(self.ML_node, feed_dict=feed_dict)
             feed_dict[self.pick_point_input] = node
             act, = sess.run([self.ML_action], feed_dict=feed_dict)
+        if num_samples==1:
+            act = act[:,0]
         return act
-
-    def predict_single_prob(self, sess, obs, over_seg_dict, under_seg_dict, action):
-        feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
-        node_index = int(actions[0]*63)
-        legal_actions = node_index <= 63 and node_index >= 0
-        if not legal_actions:
-            print("illegal actions")
-            pdb.set_trace()
-        feed_dict[self.pick_point_input] = [[node_index]]
-        feed_dict[self.action_input] = action[np.newaxis, 1:]
-        prob, = sess.run([self.action_prob], feed_dict=feed_dict)
-        return prob[0],
-
-    def predict_batch_prob(self, sess, obs, over_seg_dict, under_seg_dict, action):
-        feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
-        node_index = action[:,0:1] * 63
-        legal_actions = np.all(node_index <= 63.0) and np.all(node_index >= 0.0)
-        if not legal_actions:
-            print("illegal actions")
-            pdb.set_trace()
-        feed_dict[self.pick_point_input] = node_index.astype(np.int32)
-        feed_dict[self.action_input] = action[:,1:]
-        prob, = sess.run([self.action_prob], feed_dict=feed_dict)
-        return prob
 
     def predict_single_vf(self, sess, obs, over_seg_dict, under_seg_dict):
         feed_dict = self.make_feed_dict_single(obs, over_seg_dict, under_seg_dict)
@@ -265,18 +243,15 @@ class Model:
         with tf.variable_scope(self.scope):
 
             self.train_node_input = tf.placeholder(tf.float32, [None,])
-            self.train_action_second = tf.placeholder(tf.float32, self.gaussian_mean.shape)
+            self.train_action_second = tf.placeholder(tf.float32, [None, 1, self.gaussian_mean.shape[-1]]) # B(None) x S(None) x (action_dim-1)
             self.advantage = tf.placeholder(tf.float32, [None])
             self.reward = tf.placeholder(tf.float32, [None])
-            self.prev_prob = tf.placeholder(tf.float32, [None])
 
             # Policy loss
-            neglogpac = -self.categorical.log_prob(self.train_node_input) - self.gaussian.log_prob(self.train_action_second)
-            pac = self.categorical.prob(self.train_node_input) * self.gaussian.prob(self.train_action_second)
-            self.IS = pac / self.prev_prob
-            self.pg_loss = tf.reduce_mean(self.advantage * tf.stop_gradient(pac) / self.prev_prob * neglogpac)
+            neglogpac = -self.categorical.log_prob(self.train_node_input) - tf.squeeze(self.gaussian.log_prob(self.train_action_second), axis=-1)
+            self.pg_loss = tf.reduce_mean(self.advantage * neglogpac)
             # Entropy is used to improve exploration by limiting the premature convergence to suboptimal policy.
-            self.entropy = tf.reduce_mean(self.gaussian.entropy()+self.categorical.entropy())
+            self.entropy = tf.reduce_mean(tf.squeeze(self.gaussian.entropy(), axis=-1)+self.categorical.entropy())
             # Value loss
             self.vf_loss = tf.reduce_mean((tf.squeeze(self.state_value) - self.reward)**2)
             self.loss = self.pg_loss - self.entropy*ent_coef + self.vf_loss*vf_coef
@@ -295,32 +270,23 @@ class Model:
             tf.summary.scalar('entropy', self.entropy)
             self.merged_summary = tf.summary.merge_all()
 
-    def fit(self, sess, obs, over_seg_dict, under_seg_dict, actions, advantages, rewards, prev_prob):
+    def fit(self, sess, obs, over_seg_dict, under_seg_dict, actions, advantages, rewards):
         nodes = actions[:,0]
         node_index = nodes*63
         legal_actions = np.all(node_index <= 63.0) and np.all(node_index >= 0.0)
         if not legal_actions:
             print("illegal actions")
             pdb.set_trace()
-        feed_dict= {self.input:obs,
-                    self.train_node_input:node_index.astype(np.int32),
-                    self.train_action_second:actions[:,1:],
-                    self.pick_point_input:node_index[:,np.newaxis].astype(np.int32),
-                    self.advantage:advantages,
-                    self.reward:rewards,
-                    self.prev_prob:prev_prob,
-                    self.over_seg_obs: over_seg_dict['obs'],
-                    self.over_seg_pos: over_seg_dict['pos'],
-                    self.over_seg_length: over_seg_dict['length'],
-                    self.under_seg_obs: under_seg_dict['obs'],
-                    self.under_seg_pos: under_seg_dict['pos'],
-                    self.under_seg_length: under_seg_dict['length']
-        }
-        loss, debug_softmax, debug_mean, debug_std, debug_IS = sess.run([self.loss, self.categorical.probs, self.gaussian_mean, self.gaussian_std, self.IS],
+        feed_dict = self.make_feed_dict_batch(obs, over_seg_dict, under_seg_dict)
+        feed_dict.update({self.train_node_input:node_index.astype(np.int32),
+                          self.train_action_second:actions[:,np.newaxis, 1:],
+                          self.pick_point_input:node_index[:,np.newaxis].astype(np.int32),
+                          self.advantage:advantages,
+                          self.reward:rewards})
+        loss, debug_softmax, debug_mean, debug_std = sess.run([self.loss, self.categorical.probs, self.gaussian_mean, self.gaussian_std],
                                                               feed_dict=feed_dict)
         #print(debug_softmax[0])
         #print(debug_std[0])
-        print(np.amax(debug_IS), np.amin(debug_IS))
         valid_logits = debug_softmax.flatten()
         valid_logits = valid_logits[valid_logits>-300]
         if np.any(np.isnan(debug_softmax)) or np.any(np.isnan(debug_mean)) or np.isnan(loss):
@@ -330,7 +296,7 @@ class Model:
             print("pick logits collapsing")
             pdb.set_trace()
         else:
-           sess.run(self.optimizer, feed_dict=feed_dict)
+            sess.run(self.optimizer, feed_dict=feed_dict)
         return loss
 
     def save(self, sess, file_dir, step):
@@ -365,10 +331,8 @@ if __name__=="__main__":
         under_seg[i,:64-intersect[1][i],:]=states[i,intersect[1][i]:64,:]
         under_pos[i,:64-intersect[1][i],0]=np.arange(intersect[1][i], 64)
     action = model.predict_batch(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
-                                               under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length}, explore=True)
+                                               under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length}, explore=True, num_samples=10)
     print(action.shape)
-    act_prob = model.predict_batch_prob(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
-                                               under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length}, action=action)
     model.fit(sess, states, over_seg_dict={'obs':over_seg, 'pos':over_pos/63.0, 'length':over_length},
                             under_seg_dict={'obs':under_seg, 'pos':under_pos/63.0, 'length':under_length},
-                            actions=action, advantages=np.ones(4,), rewards=np.ones(4,), prev_prob=act_prob)
+                            actions=action[:,0,:], advantages=np.ones(4,), rewards=np.ones(4,))

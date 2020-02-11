@@ -38,6 +38,7 @@ class Buffer(object):
         # Memory
         self.obs = None
         self.actions = None
+        self.end_obs = None
         self.rewards = None
         self.over_seg_range = None
         self.under_seg_range = None
@@ -53,7 +54,7 @@ class Buffer(object):
     def can_sample(self):
         return self.num_in_buffer > 0
 
-    def put(self, obs, actions, rewards, intended_action):
+    def put(self, obs, actions, rewards, intended_action, end_obs=None):
         # obs: np.array((64,3))
         # actions: np.array((6,))
         # reward: dict
@@ -64,6 +65,8 @@ class Buffer(object):
             self.under_seg_range = np.empty([self.size, 2], dtype=np.int32)
             if not self.filter_success:
                 self.rewards = np.empty([self.size], dtype=np.float32)
+            if end_obs is not None:
+                self.end_obs = np.empty([self.size] + list(obs.shape), dtype=np.float32)
 
         if (not self.filter_success) or rewards>0.0:
             self.obs[self.next_idx] = obs
@@ -73,6 +76,9 @@ class Buffer(object):
             self.under_seg_range[self.next_idx] = under_range
             if not self.filter_success:
                 self.rewards[self.next_idx] = rewards
+            if self.end_obs is not None:
+                assert(end_obs is not None)
+                self.end_obs[self.next_idx] = end_obs
             self.next_idx = (self.next_idx + 1) % self.size
             self.num_in_buffer = min(self.size, self.num_in_buffer + 1)
 
@@ -103,16 +109,23 @@ class Buffer(object):
             rewards = np.array(self.rewards[idx])
         else:
             rewards = np.ones((batch_size,))
-        return obs, actions, rewards, over_seg_dict, under_seg_dict
+        if self.end_obs is not None:
+            end_obs = np.array(self.end_obs[idx])
+        else:
+            end_obs = None
+        return obs, actions, rewards, over_seg_dict, under_seg_dict, end_obs
 
-    def augment(self, obs, actions, over_seg_dict, under_seg_dict):
+    def augment(self, obs, actions, over_seg_dict, under_seg_dict, end_obs=None):
         rotations = np.random.uniform(0,np.pi*2, size=(obs.shape[0],))
         translations = np.random.uniform(-0.1,0.1,size=(obs.shape[0],1,2))
         rotations = np.array([[np.cos(rotations), np.sin(rotations)],
                               [-np.sin(rotations), np.cos(rotations)]]).transpose((2,0,1))
         obs = obs.copy()
-        actions = actions.copy()
         obs[:,:,:2] = np.matmul(obs[:,:,:2], rotations) + translations
+        if end_obs is not None:
+            end_obs = end_obs.copy()
+            end_obs[:,:,:2] = np.matmul(end_obs[:,:,:2], rotations) + translations
+        actions = actions.copy()
         actions[:,1:3] = np.matmul(actions[:,np.newaxis,1:3], rotations)[:,0,:] + translations[:,0,:]
         actions[:,3:5] = np.matmul(actions[:,np.newaxis,3:5], rotations)[:,0,:] + translations[:,0,:]
         over_seg_obs = over_seg_dict['obs'].copy()
@@ -125,7 +138,7 @@ class Buffer(object):
             under_seg_obs[i,l:] = 0.0
         over_seg_dict = {'obs':over_seg_obs, 'pos':over_seg_dict['pos'], 'length':over_seg_dict['length']}
         under_seg_dict = {'obs':under_seg_obs, 'pos':under_seg_dict['pos'], 'length':under_seg_dict['length']}
-        return obs, actions, over_seg_dict, under_seg_dict
+        return obs, actions, over_seg_dict, under_seg_dict, end_obs
 
 
     def dump(self, path='./'):
@@ -139,6 +152,7 @@ class Buffer(object):
                                                rewards=rewards,
                                                over_seg_range=self.over_seg_range[:self.num_in_buffer],
                                                under_seg_range=self.under_seg_range[:self.num_in_buffer],
+                                               end_obs=self.end_obs[:self.num_in_buffer] if self.end_obs is not None else None,
                                                )
 
     def load(self, np_file):
@@ -155,6 +169,11 @@ class Buffer(object):
         if not self.filter_success:
             self.rewards = np.empty([self.size], dtype=np.float32)
             self.rewards[:self.num_in_buffer]=data['rewards']
+        if 'end_obs' in data.files and data['end_obs'].shape[0]==self.num_in_buffer:
+            self.end_obs = np.empty([self.size] + list(data['obs'][0].shape), dtype=np.float32)
+            self.end_obs[:self.num_in_buffer]=data['end_obs']
+        else:
+            self.end_obs = None
         self.next_idx = self.num_in_buffer
 
     def append(self, np_file):
@@ -170,6 +189,9 @@ class Buffer(object):
         self.under_seg_range[self.num_in_buffer:self.num_in_buffer+length]=data['under_seg_range'][:length]
         if not self.filter_success:
             self.rewards[self.num_in_buffer:self.num_in_buffer+length]=data['rewards'][:length]
+        if self.end_obs is not None:
+            assert('end_obs' in data.files and data['end_obs'].shape[0]==length)
+            self.end_obs[self.num_in_buffer:self.num_in_buffer+length]=data['end_obs'][:length]
         self.num_in_buffer += length
         self.next_idx += length
 

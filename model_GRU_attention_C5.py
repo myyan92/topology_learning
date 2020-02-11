@@ -146,7 +146,7 @@ class Model:
         for k in range(4):
             absolute_pos_sins.append( tf.sin(absolute_pos*k*3.1415) )
         relative_pos = ((absolute_pos - absolute_pos[:,0:1,:]) * 63
-                         / tf.reshape(tf.cast(lengths, tf.float32)-1.0, [-1,1,1]))
+                         / tf.reshape(tf.cast(lengths, tf.float32)-0.999, [-1,1,1]))
         relative_pos_sins = []
         for k in range(4):
             relative_pos_sins.append( tf.sin(relative_pos*k*3.1415) )
