@@ -52,7 +52,7 @@ class Model:
             whole_position_encoding = self.position_encoding(whole_pos, whole_length, self.mask_whole)
 
             fc1 = tf.layers.dense(self.feature_over, 512, name='over_fc1', activation=None, use_bias=False)
-            fc1 += tf.layers.dense(over_position_encoding, 512, name='over_fc1p', activation=None, use_bias=False)
+#            fc1 += tf.layers.dense(over_position_encoding, 512, name='over_fc1p', activation=None, use_bias=False)
             fc1 = tf.nn.relu(fc1)
             fc1 = tf.contrib.layers.layer_norm(fc1, begin_norm_axis=-1)
             fc2 = tf.layers.dense(fc1, 512, name='over_fc2', activation=tf.nn.relu, use_bias=False)
@@ -64,7 +64,7 @@ class Model:
             self.feature_over_2 = fc4
 
             fc1 = tf.layers.dense(self.feature_under, 512, name='under_fc1', activation=None, use_bias=False)
-            fc1 += tf.layers.dense(under_position_encoding, 512, name='under_fc1p', activation=None, use_bias=False)
+#            fc1 += tf.layers.dense(under_position_encoding, 512, name='under_fc1p', activation=None, use_bias=False)
             fc1 = tf.nn.relu(fc1)
             fc1 = tf.contrib.layers.layer_norm(fc1, begin_norm_axis=-1)
             fc2 = tf.layers.dense(fc1, 512, name='under_fc2', activation=tf.nn.relu, use_bias=False)
@@ -76,7 +76,7 @@ class Model:
             self.feature_under_2 = fc4
 
             fc1 = tf.layers.dense(self.feature_whole, 512, name='whole_fc1', activation=None, use_bias=False)
-            fc1 += tf.layers.dense(whole_position_encoding, 512, name='whole_fc1p', activation=None, use_bias=False)
+#            fc1 += tf.layers.dense(whole_position_encoding, 512, name='whole_fc1p', activation=None, use_bias=False)
             fc1 = tf.nn.relu(fc1)
             fc1 = tf.contrib.layers.layer_norm(fc1, begin_norm_axis=-1)
             fc2 = tf.layers.dense(fc1, 512, name='whole_fc2', activation=tf.nn.relu, use_bias=False)
