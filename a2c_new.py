@@ -47,16 +47,15 @@ class A2C():
     def update(self):
         for key in self.buffer_dict:
             while self.buffer_dict[key].has_atleast(self.replay_start+self.replay_grow*self.steps_dict[key]):
-                obs, actions, rewards, over_seg_dict, under_seg_dict, probs = self.buffer_dict[key].get(self.train_batch_size)
-                probs = np.ones_like(probs)*2000.0
+                obs, actions, rewards, over_seg_dict, under_seg_dict, _ = self.buffer_dict[key].get(self.train_batch_size)
                 # add augmentation
-                obs, actions, over_seg_dict, under_seg_dict = self.buffer_dict[key].augment(
+                obs, actions, over_seg_dict, under_seg_dict, _ = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
 
 #                state_values = self.model_dict[key].predict_batch_vf(self.sess, obs, over_seg_dict, under_seg_dict)
 #                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict,
 #                                         actions, rewards - state_values[:,0], rewards)
-                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards, probs)
+                self.model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
                 self.steps_dict[key] += 1
                 if (self.steps_dict[key] % self.log_interval == 0):
                     self.model_dict[key].save(self.sess, os.path.join(self.save_dir, 'models', 'model-%s'%(key)) , step=self.steps_dict[key])
@@ -111,7 +110,7 @@ def learn(
         buffer.filter_success=False
         buffer.rewards = np.empty([buffer.size], dtype=np.float32)
         buffer.rewards[:buffer.num_in_buffer]=1.0
-    runner = Runner(env, models, model_stats, buffers, gamma=gamma)
+    runner = Runner(env, models, [], model_stats, buffers, gamma=gamma)
 
     def signal_handler(sig, frame):
         for buffer in buffers:
