@@ -54,7 +54,8 @@ class A2C():
                 obs, actions, over_seg_dict, under_seg_dict, _ = self.buffer_dict[key].augment(
                                                                    obs, actions, over_seg_dict, under_seg_dict)
                 # Train actor with buffer
-                self.actor_model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
+                if key in self.actor_model_dict:
+                    self.actor_model_dict[key].fit(self.sess, obs, over_seg_dict, under_seg_dict, actions, rewards, rewards)
                 # Train Q function
                 # make up random bad samples.
                 fake_actions = np.random.uniform(low=np.array([0.0,-0.5,-0.5,-0.5,-0.5,0.02]),
@@ -77,7 +78,8 @@ class A2C():
 
                 self.steps_dict[key] += 1
                 if (self.steps_dict[key] % self.log_interval == 0):
-                    self.actor_model_dict[key].save(self.sess, os.path.join(self.save_dir, 'actor_models', 'model-%s'%(key)) , step=self.steps_dict[key])
+                    if key in self.actor_model_dict:
+                        self.actor_model_dict[key].save(self.sess, os.path.join(self.save_dir, 'actor_models', 'model-%s'%(key)) , step=self.steps_dict[key])
                     self.critic_model_dict[key].save(self.sess, os.path.join(self.save_dir, 'critic_models', 'model-%s'%(key)) , step=self.steps_dict[key])
                     stat_string = self.model_stat_dict[key].stat()
                     print(stat_string)

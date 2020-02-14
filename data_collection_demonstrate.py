@@ -15,9 +15,9 @@ def hash_dict(abstract_action):
 env = KnotEnv(32)
 
 ########## 0 to 1 R1 #################
-#root = './straight_states_new/'
-#folders = ['annotate_R1']
-#reward_key = 'move-R1_left-1_sign-1'
+root = './straight_states_new/'
+folders = ['annotate_R1']
+reward_key = 'move-R1_left-1_sign-1'
 ########## 0 to 1 R2 #################
 #root = './straight_states_new/'
 #folders = ['annotate_R2']
@@ -27,9 +27,9 @@ env = KnotEnv(32)
 #folders = ['annotate_0on1', 'annotate_0on2', 'annotate_2on1', 'annotate_2on0']
 #reward_key = 'move-cross_endpoint-over_sign-1'
 ########## 2 to 3 crosses ##############
-root = './2intersect_states_new/'
-folders = ['annotate_2on0', 'annotate_2on4']
-reward_key = 'move-cross_endpoint-under_sign-1'
+#root = './2intersect_states_new/'
+#folders = ['annotate_2on0', 'annotate_2on4']
+#reward_key = 'move-cross_endpoint-under_sign-1'
 
 buffer = Buffer(reward_key, size=12000, filter_success=False)
 
@@ -47,11 +47,11 @@ for folder in folders:
         node = np.argmin(dists)
         action_mean = [node/63.0]+points[1].tolist()+points[2].tolist()+[0.05]
         action_mean = np.array(action_mean)
-#        action_std = np.array([0.03,0.08,0.08,0.08,0.08,0.05]) # for 0to1
+        action_std = np.array([0.03,0.08,0.08,0.08,0.08,0.05]) # for 0to1
 #        action_std = np.array([0.03,0.05,0.05,0.05,0.05,0.05]) # for 1to2
-        action_std = np.array([0.03,0.02,0.02,0.02,0.02,0.05]) # for 2to3
+#        action_std = np.array([0.03,0.02,0.02,0.02,0.02,0.05]) # for 2to3
 
-        for _ in range(320//env.parallel): # 480 for 0to1, 320 otherwise
+        for _ in range(480//env.parallel): # 320 for 1to2 and 2to3
             env.start_state = [states]*env.parallel
             env.start_obs = [0.5*(states[:64]+states[64:])]*env.parallel
             obs = env.start_obs
@@ -61,7 +61,7 @@ for folder in folders:
             end_obs, rewards, dones, infos = env.step(actions)
 
             ############ 0 to 1 R1 #######################
-#            intended_action = {'move':'R1', 'sign':1, 'left':1, 'idx':0}
+            intended_action = {'move':'R1', 'sign':1, 'left':1, 'idx':0}
             ############ 0 to 1 R2 #######################
 #            intended_action = {'move':'R2', 'over_before_under':1, 'left':1, 'over_idx':0, 'under_idx':0}
             ############ 1 to 2 crosses ##################
@@ -70,10 +70,10 @@ for folder in folders:
 #                               'under_idx': int(folder[-1]) }
 #            intended_action['sign'] = 1 if intended_action['over_idx']==0 else -1
             ############ 2 to 3 crosses ##################
-            intended_action = {'move':'cross',
-                              'over_idx': int(folder[-4]),
-                              'under_idx': int(folder[-1]) }
-            intended_action['sign'] = 1 if intended_action['under_idx']==0 else -1
+#            intended_action = {'move':'cross',
+#                              'over_idx': int(folder[-4]),
+#                              'under_idx': int(folder[-1]) }
+#            intended_action['sign'] = 1 if intended_action['under_idx']==0 else -1
             ##############################################
 
             for ob,ac,r,end_ob in zip(obs, actions, rewards, end_obs):
