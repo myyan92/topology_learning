@@ -124,25 +124,25 @@ def learn(
 
     # pretrain
     a2c = A2C(actor_models, critic_models, model_stats, buffers, log_interval, train_batch_size, replay_start=32, replay_grow=0.2, save_dir=save_dir)
-#    for model in actor_models:
-#        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC3_nomining_AC/actor_models/model-move-cross_endpoint-over_sign-1-102200')
-#        a2c.steps_dict[model.scope.replace('_actor','')]=102200
-#    for model in critic_models:
-#        model.load(a2c.sess, './1to2-cross-endpointover-sign1-randstate_mC3_nomining_AC/critic_models/model-move-cross_endpoint-over_sign-1-102200')
+    for model in actor_models:
+        model.load(a2c.sess, './2to3-cross-endpointunder-sign1-randstate_IL_mC3/actor_models/model-move-cross_endpoint-under_sign-1-pretrain')
+        a2c.steps_dict[model.scope.replace('_actor','')]=22000
+    for model in critic_models:
+        model.load(a2c.sess, './2to3-cross-endpointunder-sign1-randstate_IL_mC3/critic_models/model-move-cross_endpoint-under_sign-1-pretrain')
     a2c.update()
     # save pretrained models
-    for key, model in a2c.actor_model_dict.items():
-        latest_checkpoint = model.saver.last_checkpoints[-1]
-        files=glob.glob(latest_checkpoint+'*')
-        for f in files:
-            suffix = f.split('.')[-1]
-            shutil.copy(f, os.path.join(a2c.save_dir, 'actor_models', 'model-%s-pretrain.%s'%(key, suffix)))
-    for key, model in a2c.critic_model_dict.items():
-        latest_checkpoint = model.saver.last_checkpoints[-1]
-        files=glob.glob(latest_checkpoint+'*')
-        for f in files:
-            suffix = f.split('.')[-1]
-            shutil.copy(f, os.path.join(a2c.save_dir, 'critic_models', 'model-%s-pretrain.%s'%(key, suffix)))
+#    for key, model in a2c.actor_model_dict.items():
+#        latest_checkpoint = model.saver.last_checkpoints[-1]
+#        files=glob.glob(latest_checkpoint+'*')
+#        for f in files:
+#            suffix = f.split('.')[-1]
+#            shutil.copy(f, os.path.join(a2c.save_dir, 'actor_models', 'model-%s-pretrain.%s'%(key, suffix)))
+#    for key, model in a2c.critic_model_dict.items():
+#        latest_checkpoint = model.saver.last_checkpoints[-1]
+#        files=glob.glob(latest_checkpoint+'*')
+#        for f in files:
+#            suffix = f.split('.')[-1]
+#            shutil.copy(f, os.path.join(a2c.save_dir, 'critic_models', 'model-%s-pretrain.%s'%(key, suffix)))
 
     runner = Runner(env, actor_models, critic_models, model_stats, buffers, gamma=gamma)
 
