@@ -103,7 +103,7 @@ class Runner(object):
             reward = 1.0 if hash_dict(r) == hash_dict(ia) else 0.0
             stats.put(reward)
             if key in self.buffer_dict:
-                ob_end_u = unifying_transform_decode(ob_end, None, None, tf)
+                ob_end_u,_,_ = unifying_transform_decode(ob_end, None, None, tf)
                 self.buffer_dict[key].put(ob_u, ac_u, reward, ia_u, ob_end_u)
 
         if self.eval_render:
